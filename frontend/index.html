@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimplifAI — Hinglish Code Mentor for Bharat</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+
+<body>
+
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+
+  <!-- ── NAV ── -->
+  <nav>
+    <a class="nav-logo" href="#">
+      <div class="logo-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+        </svg>
+      </div>
+      <div class="logo-name">Simplif<span class="ai">AI</span></div>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="#how">How It Works</a>
+      <a class="nav-link" href="#why">Features</a>
+      <a class="nav-link" href="#faq">FAQ</a>
+      <a class="nav-link" href="#about">About</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-badge">AWS Hackathon</div>
+    </div>
+  </nav>
+
+  <!-- ── HERO ── -->
+  <section class="hero">
+    <div class="hero-eyebrow">
+      <span class="dot"></span>
+      Powered by Amazon Nova 2 Lite · AWS Bedrock
+    </div>
+    <h1 class="hero-title">
+      <span class="line1">Learn Coding With</span>
+      <span class="line2">SimplifAI ⚡</span>
+    </h1>
+    <p class="hero-sub">India ka pehla AI coding mentor jo Hinglish mein samjhata hai — cricket, biryani aur Bollywood
+      ke examples se.</p>
+    <div class="hero-tagline">// "Logic wohi, andaaz bilkul apna"</div>
+    <div class="hero-actions">
+      <a href="#editor" class="try-btn">
+        <span style="font-size:20px;">⚡</span>
+        <span>Try SimplifAI Now</span>
+      </a>
+      <a href="#how" class="secondary-btn">
+        <span>How It Works</span>
+      </a>
+    </div>
+  </section>
+
+
+  <!-- ── LANG PILLS ── -->
+  <div class="lang-row">
+    <div class="lang-pill active" onclick="selLang(this,'Python')">🐍 Python</div>
+    <div class="lang-pill" onclick="selLang(this,'JavaScript')">🟨 JavaScript</div>
+    <div class="lang-pill" onclick="selLang(this,'Java')">☕ Java</div>
+    <div class="lang-pill" onclick="selLang(this,'C++')">⚙️ C++</div>
+    <div class="lang-pill" onclick="selLang(this,'SQL')">🗄️ SQL</div>
+    <div class="lang-pill" onclick="selLang(this,'Auto Detect')">🔍 Auto</div>
+  </div>
+
+  <!-- ── EDITOR ── -->
+  <div class="editor-wrap" id="editor">
+    <div class="editor-grid">
+
+      <!-- INPUT -->
+      <div class="panel">
+        <div class="panel-bar">
+          <div class="panel-bar-left">
+            <div class="panel-dot dot-r"></div>
+            <div class="panel-dot dot-y"></div>
+            <div class="panel-dot dot-g"></div>
+            <span class="panel-title-txt">Code Input</span>
+          </div>
+          <div class="sample-btns">
+            <button class="sample-btn" onclick="loadSample('loop')">Loop</button>
+            <button class="sample-btn" onclick="loadSample('fn')">Function</button>
+            <button class="sample-btn" onclick="loadSample('cls')">Class</button>
+            <button class="sample-btn" onclick="loadSample('nested')">O(n²)</button>
+          </div>
+        </div>
+
+        <!-- Single code box -->
+        <div class="editor-body">
+          <textarea class="code-area" id="codeInput" spellcheck="false" placeholder="// Yahan apna code paste karo...
+        
+        class Student {
+          constructor(name, age) {
+    this.name = name;
+    this.age = age;
+  }
+  
+  introduce() {
+    console.log(`Hi, I'm ${this.name}`);
+  }
+}" oninput="updateMeter()"></textarea>
+        </div>
+
+        <div class="complexity-bar">
+          <span class="complexity-label">Complexity</span>
+          <div class="meter">
+            <div class="meter-fill" id="meterFill"></div>
+          </div>
+          <span class="complexity-val" id="meterVal">—</span>
+        </div>
+
+        <div class="analogy-row">
+          <span class="analogy-label">Analogy:</span>
+          <button class="analogy-btn active" onclick="selAnalogy(this,'cricket')">🏏 Cricket</button>
+          <button class="analogy-btn" onclick="selAnalogy(this,'bollywood')">🎬 Bollywood</button>
+          <button class="analogy-btn" onclick="selAnalogy(this,'food')">🍛 Khana</button>
+          <button class="analogy-btn" onclick="selAnalogy(this,'school')">📚 School</button>
+          <button class="analogy-btn" onclick="selAnalogy(this,'none')">✏️ Plain</button>
+        </div>
+
+        <div class="settings-row">
+          <div class="select-wrap">
+            <select id="levelSel">
+              <option value="beginner">🌱 Beginner</option>
+              <option value="intermediate" selected>⚡ Intermediate</option>
+              <option value="advanced">🔥 Advanced</option>
+            </select>
+          </div>
+          <div class="select-wrap">
+            <select id="langSel">
+              <option value="Hinglish" selected>🇮🇳 Hinglish</option>
+              <option value="Hindi">हिंदी Pure</option>
+              <option value="English">English</option>
+            </select>
+          </div>
+          <button class="explain-btn" id="explainBtn" onclick="explainCode()">
+            <div class="spinner"></div>
+            <span class="btn-icon">⚡</span>
+            Explain Karo!
+          </button>
+        </div>
+      </div>
+
+      <!-- OUTPUT -->
+      <div class="panel">
+        <div class="panel-bar">
+          <div class="panel-bar-left">
+            <div class="panel-dot dot-r"></div>
+            <div class="panel-dot dot-y"></div>
+            <div class="panel-dot dot-g"></div>
+            <span class="panel-title-txt">Output</span>
+          </div>
+          <div id="levelBadge"></div>
+        </div>
+
+        <div class="out-tabs">
+          <button class="out-tab active" id="tab-expl" onclick="switchTab('expl')">💬 Explain</button>
+          <button class="out-tab tab-debug" id="tab-debug" onclick="switchTab('debug')">🐛 Debug</button>
+          <button class="out-tab" id="tab-cx" onclick="switchTab('cx')">📊 Complexity</button>
+          <button class="out-tab" id="tab-quiz" onclick="switchTab('quiz')">🧩 Quiz</button>
+        </div>
+
+        <div class="out-body" id="outBody">
+          <div class="placeholder-state">
+            <div class="icon">🤖</div>
+            <h3>SimplifAI Ready Hai!</h3>
+            <p>Code paste karo aur "Explain Karo!" dabao — Hinglish mein samjho!</p>
+          </div>
+        </div>
+
+        <div class="output-actions" id="outActions" style="display:none;">
+          <button class="action-btn btn-pdf" onclick="doDownloadPDF()">
+            <svg class="btn-icon-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M9 1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" />
+              <path d="M9 1v5h5" />
+              <path d="M5 9h6M5 12h4" />
+            </svg>PDF Report
+          </button>
+          <button class="action-btn btn-debug" id="debugBtn" onclick="debugCode()">
+            <svg class="btn-icon-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path
+                d="M6 2a2 2 0 0 0-2 2v1H2M10 2a2 2 0 0 1 2 2v1h2M4 8H2M14 8h-2M4 12H2M14 12h-2M6 14a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H6z" />
+            </svg>Debug
+          </button>
+          <button class="action-btn btn-share" onclick="toast('Share feature coming soon! 🔗')">
+            <svg class="btn-icon-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="13" cy="3" r="1.5" />
+              <circle cx="13" cy="13" r="1.5" />
+              <circle cx="3" cy="8" r="1.5" />
+              <path d="M4.5 8.5 11.5 13M4.5 7.5 11.5 3" />
+            </svg>Share
+          </button>
+        </div>
+      </div>
+
+    </div>
+    <!-- STATS BAR -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <span class="emoji">🔥</span>
+        <span class="text"><span class="num num-orange" id="explCount">0</span> explanations today</span>
+      </div>
+      <div class="stat-item">
+        <span class="emoji">⚡</span>
+        <span class="text">Avg response: <span class="num num-teal">~2.4s</span></span>
+      </div>
+      <div class="stat-item">
+        <span class="emoji">🇮🇳</span>
+        <span class="text">Made for <span class="num num-violet">Bharat</span></span>
+      </div>
+    </div>
+
+  </div>
+  <br><br>
+  <hr class="sec-divider">
+
+  <!-- ── HOW IT WORKS ── -->
+  <section class="sec" id="how">
+    <div style="text-align:center;">
+      <div class="sec-tag">Getting Started</div>
+      <div class="sec-title">How It Works? 🛠️</div>
+      <div class="sec-sub" style="margin:0 auto 50px;">4 simple steps — code paste karo, Hinglish mein samjho!</div>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-badge">
+          <div class="step-num">1</div> Step One
+        </div>
+        <span class="step-icon">🎨</span>
+        <div class="step-title">Theme Chuno</div>
+        <div class="step-desc">Cricket, Bollywood, Khana ya School — jo tumhe best samjhe! Analogy tumhari marzi.</div>
+      </div>
+      <div class="step-card">
+        <div class="step-badge">
+          <div class="step-num">2</div> Step Two
+        </div>
+        <span class="step-icon">📋</span>
+        <div class="step-title">Code Paste Karo</div>
+        <div class="step-desc">Koi bhi code copy karo ya sample load karo — Python, JS, Java, C++ sab supported!</div>
+      </div>
+      <div class="step-card">
+        <div class="step-badge">
+          <div class="step-num">3</div> Step Three
+        </div>
+        <span class="step-icon">⚡</span>
+        <div class="step-title">Explain Karo!</div>
+        <div class="step-desc">Button dabaao — Amazon Nova 2 Lite AWS Bedrock pe tumhara code analyze karega aur
+          crystal-clear
+          Hinglish explanation dega.</div>
+      </div>
+      <div class="step-card">
+        <div class="step-badge">
+          <div class="step-num">4</div> Step Four
+        </div>
+        <span class="step-icon">🚀</span>
+        <div class="step-title">Samjho &amp; Test Karo</div>
+        <div class="step-desc">Complexity chart dekho, quiz do, concepts pakke karo. Copy, save, share — sab ek jagah!
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="sec-divider">
+
+  <!-- ── WHY DIFFERENT ── -->
+  <section class="sec" id="why">
+    <div style="text-align:center;">
+      <div class="sec-tag">Differentiation</div>
+      <div class="sec-title">Dusron Se Alag Kyun Hai? 🏆</div>
+      <div class="sec-sub" style="margin:0 auto 50px;">Normal AI tools vs SimplifAI — yeh features sirf yahan milenge
+      </div>
+    </div>
+    <div class="why-grid">
+      <div class="why-card">
+        <div class="why-vs">
+          <div class="why-icon-wrap ww-o">🗣️</div>
+          <div>
+            <div class="why-title">Hinglish First</div>
+            <div class="why-desc">ChatGPT English mein explain karta hai. SimplifAI Hinglish mein — "Loop = cricket
+              over, har ball ek iteration!" Dil se samajh aata hai, dimag bhi khulta hai.</div>
+          </div>
+        </div>
+        <div class="why-tag">✅ Desi Language</div>
+      </div>
+      <div class="why-card">
+        <div class="why-vs">
+          <div class="why-icon-wrap ww-o">🏏</div>
+          <div>
+            <div class="why-title">Indian Analogies</div>
+            <div class="why-desc">Arrays = IPL team, Functions = biryani recipe, Loops = EMI installments. Jo concepts
+              tumhe already pata hain, unse code sikhao — memory mein chipak jaata hai!</div>
+          </div>
+        </div>
+        <div class="why-tag">✅ Relatable Context</div>
+      </div>
+      <div class="why-card why-featured">
+        <div class="why-vs">
+          <div class="why-icon-wrap ww-o">📊</div>
+          <div>
+            <div class="why-title">Complexity Visualizer <span class="why-new-badge">NEW</span></div>
+            <div class="why-desc">Sirf explanation nahi — O(n²) ka animated Big-O chart dikhta hai. Time & Space
+              complexity visually samjho, worst/average case bhi dekho.</div>
+          </div>
+        </div>
+        <div class="why-tag">✅ Visual Learning</div>
+      </div>
+      <div class="why-card why-featured">
+        <div class="why-vs">
+          <div class="why-icon-wrap ww-o">🧩</div>
+          <div>
+            <div class="why-title">Instant Quiz <span class="why-new-badge">NEW</span></div>
+            <div class="why-desc">Explanation ke baad automatic 5-question MCQ quiz generate hota hai — concepts verify
+              karo, galti se seekho. Passive reading nahi, active learning!</div>
+          </div>
+        </div>
+        <div class="why-tag">✅ Active Learning</div>
+      </div>
+      <div class="why-card">
+        <div class="why-vs">
+          <div class="why-icon-wrap ww-o">🎯</div>
+          <div>
+            <div class="why-title">Tier 2/3 Focus</div>
+            <div class="why-desc">Jaipur, Patna, Lucknow — jinke liye English documentation ek barrier hai. Unki bhasha,
+              unke examples, unke liye banaya gaya. No English jargon, no confusion.</div>
+          </div>
+        </div>
+        <div class="why-tag">✅ Real Inclusion</div>
+      </div>
+      <div class="why-card">
+        <div class="why-vs">
+          <div class="why-icon-wrap ww-o">📄</div>
+          <div>
+            <div class="why-title">PDF Report <span class="why-new-badge">NEW</span></div>
+            <div class="why-desc">Ek click mein professional PDF report — code, explanation, complexity analysis, quiz
+              results sab ek jagah. Apne professor ko dikhao ya portfolio mein add karo!</div>
+          </div>
+        </div>
+        <div class="why-tag">✅ Shareable Report</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="sec-divider">
+
+  <!-- ── FAQ ── -->
+  <section class="sec" id="faq">
+    <div style="text-align:center;">
+      <div class="sec-tag">FAQ</div>
+      <div class="sec-title">Aksar Pooche Gaye Sawaal ❓</div>
+      <div class="sec-sub" style="margin:0 auto 50px;">Yahan sab clear ho jaayega — promise!</div>
+    </div>
+    <div class="faq-list">
+
+      <div class="faq-item">
+        <div class="faq-q">
+          <div class="faq-q-left"><span class="faq-qtext">SimplifAI aur ChatGPT mein kya fark hai?</span></div>
+          <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-ans">
+          <div class="faq-ans-inner">ChatGPT ek general-purpose assistant hai — woh English mein, technical language
+            mein explain karta hai. SimplifAI specifically Indian students ke liye banaya gaya hai. Yeh <strong>Hinglish
+              mein</strong> samjhata hai, <strong>Indian analogies</strong> use karta hai (cricket, biryani, IPL!), aur
+            sirf code samjhane par focus karta hai. Saath mein milta hai <strong>animated Complexity Visualizer</strong>
+            aur <strong>5-question Quiz</strong> — jo ChatGPT bilkul nahi deta. Ek tool, complete learning experience!
+          </div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">
+          <div class="faq-q-left"><span class="faq-qtext">Kya yeh beginners ke liye bhi useful hai?</span></div>
+          <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-ans">
+          <div class="faq-ans-inner">Bilkul! SimplifAI <strong>3 levels</strong> mein kaam karta hai:
+            <strong>Beginner</strong> mein dum mein ekdum simple language — koi jargon nahi, bas relatable examples.
+            <strong>Intermediate</strong> mein patterns aur logic flow samjhata hai. <strong>Advanced</strong> mein deep
+            technical insights, edge cases, aur best practices. Tum apna level choose karo — beginner ho ya experienced
+            developer, dono ke liye useful hai!
+          </div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">
+          <div class="faq-q-left"><span class="faq-qtext">Konsi programming languages support hoti hain?</span></div>
+          <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-ans">
+          <div class="faq-ans-inner">Dedicated support hai <code>Python</code>, <code>JavaScript</code>,
+            <code>Java</code>, <code>C++</code>, aur <code>SQL</code> ke liye — badges se select karo. Lekin
+            <strong>"Auto Detect"</strong> mode mein practically <strong>koi bhi language</strong> kaam karti hai —
+            <code>TypeScript</code>, <code>Go</code>, <code>Rust</code>, <code>PHP</code>, <code>Swift</code>,
+            <code>Kotlin</code> sab. Amazon Nova 2 Lite ke through almost har popular language explain ho sakti hai!
+          </div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">
+          <div class="faq-q-left"><span class="faq-qtext">Mera code safe hai? Kahin store toh nahi hota?</span></div>
+          <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-ans">
+          <div class="faq-ans-inner">Haan, tumhara code <strong>100% safe</strong> hai. Jo code tum paste karte ho woh
+            sirf explanation generate karne ke liye Amazon Nova 2 Lite ko bheja jaata hai — hum koi bhi code apne
+            servers pe
+            <strong>store nahi karte</strong>. Browser tab band karo, data gone. <strong>Koi account required
+              nahi</strong>, koi login nahi, koi data collection nahi. Sensitive ya production code paste karna avoid
+            karo — yeh tool sirf <strong>learning ke liye</strong> hai!
+          </div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">
+          <div class="faq-q-left"><span class="faq-qtext">PDF Report mein kya kya hota hai?</span></div>
+          <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-ans">
+          <div class="faq-ans-inner">PDF Report ek <strong>professional 4-page document</strong> hai jo automatically
+            generate hoti hai. Ismein hota hai: cover page (language, complexity, quiz score), submitted code with line
+            numbers, executive summary, time &amp; space complexity analysis with Big-O scale, optimization suggestions,
+            aur complete quiz results with per-question breakdown. Apne <strong>professor ko dikhao</strong>, portfolio
+            mein add karo, ya apni progress track karo — download karo, share karo!</div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">
+          <div class="faq-q-left"><span class="faq-qtext">Quiz kaise kaam karta hai? Questions kahan se aate
+              hain?</span></div>
+          <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-ans">
+          <div class="faq-ans-inner">Quiz <strong>tumhare specific code ke basis pe generate</strong> hota hai — generic
+            questions nahi! Agar tumhare code mein nested loops hain toh O(n²) ka question milega. Functions hain toh
+            reusability ka. Arrays hain toh data structures ka. <strong>5 MCQ questions</strong> milte hain, har answer
+            ke baad instant feedback milta hai Hinglish mein with analogy, aur end mein <strong>Grade (S/A/B/C)</strong>
+            aur detailed breakdown. Phir quiz PDF mein bhi aa jaata hai!</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <hr class="sec-divider">
+
+  <!-- ── FOOTER ── -->
+  <footer id="about">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="logo-name">Simplif<span class="ai">AI</span></div>
+        <div class="footer-tagline">// "Logic wohi, andaaz bilkul apna"</div>
+        <div class="footer-domain">SimplifAI.dev</div>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul class="footer-links">
+          <li><a href="#how">How It Works</a></li>
+          <li><a href="#why">Why Different</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Team AI²</h4>
+        <ul class="footer-links">
+          <li><a href="https://www.linkedin.com/in/vivekma78565">Vivek Maurya</a></li>
+          <li><a href="https://www.linkedin.com/in/kumsaurav91">Saurav Kumar</a></li>
+          <li><a href="https://github.com/kumsaurav91-droid">GitHub</a></li>
+          <li><a href="https://github.com/vivekmaurya18/AI-Code-Explainer">GitHub Repo.</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div>© 2026 <strong>SimplifAI.dev</strong> — Built with ❤️ in India 🇮🇳</div>
+      <div>Team <strong>AI²</strong> · AWS AI for Bharat Hackathon · Powered by Amazon Nova 2 Lite on AWS Bedrock</div>
+    </div>
+  </footer>
+
+  <div class="toast" id="toastEl"></div>
+
+  <script src="script.js"></script>
+  <script src="pdf.js"></script>
+
+</body>
+
+</html>
