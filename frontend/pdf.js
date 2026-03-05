@@ -34,9 +34,6 @@ function doDownloadPDF() {
     const ORANGE_LIGHT = [254, 215, 170];
 
     // ─── Text Sanitizer ───────────────────────────────────
-    // THE FIX: normalise everything to plain ASCII before jsPDF sees it.
-    // jsPDF's built-in Helvetica only understands 0x20-0x7E.
-    // Any character outside that range gets rendered as a garbled sequence.
     function normalizeText(raw) {
       if (raw === null || raw === undefined) return '';
       let s = String(raw);
@@ -372,12 +369,46 @@ function doDownloadPDF() {
 
     sectionHeader('3. Output & Debug');
 
-    fw('bold', 11); sc(TXT_DARK);
-    doc.text('Simulated Output', ML, y);
-    y += 8;
+    // Use AI-generated output if available, else show prompt
+    const hasRunOutput = APP.runOutputLines && APP.runOutputLines.length > 0;
+    const rawOuts = hasRunOutput ? APP.runOutputLines : ['Run Karo button dabao to get AI output'];
+    const wasAI = APP.runWasAI === true;
 
-    const simOut = (typeof simulateOutput === 'function') ? simulateOutput(code) : { outputs: [] };
-    const rawOuts = (simOut.outputs && simOut.outputs.length > 0) ? simOut.outputs : ['No output detected.'];
+    // Header with AI or simulated badge
+    fw('bold', 11); sc(TXT_DARK);
+    const outTitle = wasAI ? 'AI-Generated Output' : (hasRunOutput ? 'Simulated Output' : 'Code Output');
+    doc.text(outTitle, ML, y);
+    if (wasAI && hasRunOutput) {
+      fw('normal', 8); sc(GREEN);
+      const badgeX = ML + 45; // Fixed offset instead of doc.getTextWidth
+      doc.text('(Amazon Nova AI)', badgeX, y);
+    }
+    y += 10;
+
+    // Show input values if any
+    const runInputs = APP.runInputs || {};
+    const inputKeys = Object.keys(runInputs);
+    if (inputKeys.length > 0) {
+      const boxH = 12 + inputKeys.length * 6;
+      checkY(boxH + 10);
+
+      // Draw light green tinted box for inputs (matches the web UI)
+      sf([238, 248, 245]); // Light minty green
+      sd([180, 220, 205]); doc.setLineWidth(0.3);
+      doc.roundedRect(ML, y, TW, boxH, 2, 2, 'FD');
+
+      fw('bold', 8); sc([6, 214, 160]); // Teal color
+      doc.text('TUMHARE INPUT VALUES', ML + 5, y + 7);
+      y += 13;
+
+      fw('normal', 8.5, 'courier'); sc(TXT_DARK);
+      Object.entries(runInputs).forEach(([k, v]) => {
+        doc.text(safeText(`${k} = "${v}"`), ML + 5, y);
+        y += 6;
+      });
+      y += 8; // Extra padding below the box
+    }
+
     fw('normal', 8, 'courier');
     const wrOut = [];
     rawOuts.forEach(o => doc.splitTextToSize(safeText(o), TW - 10).forEach(l => wrOut.push(l)));
@@ -385,7 +416,11 @@ function doDownloadPDF() {
     checkY(outH + 5);
     sf(DARK_BG); doc.roundedRect(ML, y, TW, outH, 2, 2, 'F');
     sc(WHT); fw('normal', 8, 'courier');
-    doc.text('$ ' + (APP.langPill === 'Python' ? 'python main.py' : 'node main.js'), ML + 5, y + 8);
+    const runCmd = APP.langPill === 'Python' ? 'python main.py'
+      : APP.langPill === 'JavaScript' ? 'node main.js'
+        : APP.langPill === 'C++' ? './a.out'
+          : 'java Main';
+    doc.text('$ ' + runCmd, ML + 5, y + 8);
     wrOut.forEach((o, oi) => doc.text(o, ML + 5, y + 14 + oi * 5));
     y += outH + 14;
 

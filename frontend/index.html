@@ -99,18 +99,8 @@
 
         <!-- Single code box -->
         <div class="editor-body">
-          <textarea class="code-area" id="codeInput" spellcheck="false" placeholder="// Yahan apna code paste karo...
-        
-        class Student {
-          constructor(name, age) {
-    this.name = name;
-    this.age = age;
-  }
-  
-  introduce() {
-    console.log(`Hi, I'm ${this.name}`);
-  }
-}" oninput="updateMeter()"></textarea>
+          <textarea class="code-area" id="codeInput" spellcheck="false" placeholder="// Yahan apna code paste karo..."
+            oninput="updateMeter()"></textarea>
         </div>
 
         <div class="complexity-bar">
@@ -141,10 +131,13 @@
           <div class="select-wrap">
             <select id="langSel">
               <option value="Hinglish" selected>🇮🇳 Hinglish</option>
-              <option value="Hindi">हिंदी Pure</option>
               <option value="English">English</option>
             </select>
           </div>
+          <button class="explain-btn run-btn" id="runBtn" onclick="runCode()">
+            <span class="btn-icon">▶</span>
+            Run Karo
+          </button>
           <button class="explain-btn" id="explainBtn" onclick="explainCode()">
             <div class="spinner"></div>
             <span class="btn-icon">⚡</span>
@@ -167,9 +160,13 @@
 
         <div class="out-tabs">
           <button class="out-tab active" id="tab-expl" onclick="switchTab('expl')">💬 Explain</button>
-          <button class="out-tab tab-debug" id="tab-debug" onclick="switchTab('debug')">🐛 Debug</button>
-          <button class="out-tab" id="tab-cx" onclick="switchTab('cx')">📊 Complexity</button>
-          <button class="out-tab" id="tab-quiz" onclick="switchTab('quiz')">🧩 Quiz</button>
+          <button class="out-tab tab-debug" id="tab-debug" onclick="switchTab('debug')">🐛 Debug <span
+              class="new-badge">New</span></button>
+          <button class="out-tab" id="tab-cx" onclick="switchTab('cx')">📊 Complexity <span
+              class="new-badge">New</span></button>
+          <button class="out-tab" id="tab-quiz" onclick="switchTab('quiz')">🧩 Quiz <span
+              class="new-badge">New</span></button>
+          <button class="out-tab" id="tab-run" onclick="switchTab('run')">▶ Output</button>
         </div>
 
         <div class="out-body" id="outBody">
@@ -186,7 +183,7 @@
               <path d="M9 1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" />
               <path d="M9 1v5h5" />
               <path d="M5 9h6M5 12h4" />
-            </svg>PDF Report
+            </svg>PDF Report <span class="new-badge">New</span>
           </button>
           <button class="action-btn btn-debug" id="debugBtn" onclick="debugCode()">
             <svg class="btn-icon-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">

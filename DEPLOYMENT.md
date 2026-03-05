@@ -33,31 +33,29 @@
 │                      USER BROWSER                           │
 │                  (index.html + script.js)                   │
 └──────────────────────────┬──────────────────────────────────┘
-                           │  HTTP Request
+                           │  HTTPS Request
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              AWS S3 — Static Website Hosting                │
-│   simplifai-frontend-hackathon-2026.s3-website-...          │
-│   Serves: index.html, script.js, pdf.js, style.css          │
+│        Amazon CloudFront (CDN) + AWS S3 (Bucket)            │
+│  Serves securely: index.html, script.js, pdf.js, style.css  │
 └──────────────────────────┬──────────────────────────────────┘
-                           │  POST /api/explain
+                           │  POST / & POST /run
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Node.js Backend (Express API)                  │
-│              server.js — Port 3000                          │
-│              (EC2 / Lambda / local server)                  │
+│    AWS API Gateway (HTTP API) -> AWS Lambda Serverless      │
+│     (index.mjs handles all routing, logic & Bedrock CORS)   │
 └──────────────────────────┬──────────────────────────────────┘
                            │  InvokeModel API Call
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              AWS Bedrock                                    │
 │              Model: amazon.nova-lite-v1:0                   │
-│              Region: ap-south-1 (Mumbai)                    │
+│              Region: us-east-1                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Frontend** is a static site hosted on **AWS S3**.
-**Backend** is a Node.js server that can be hosted on EC2, Lambda, or any cloud/local environment.
+**Frontend** is a static site hosted on **AWS S3** and delivered globally via **Amazon CloudFront** via HTTPS.
+**Backend** is a serverless **AWS Lambda** function served via **AWS API Gateway**.
 **AI Engine** is **Amazon Nova 2 Lite** accessed via **AWS Bedrock**.
 
 ---
@@ -238,27 +236,18 @@ curl -X POST http://localhost:3000/api/explain \
   -d '{"code":"for i in range(5): print(i)","language":"python","level":"beginner","analogy":"cricket"}'
 ```
 
-### 3.5 Optional — Deploy Backend on AWS EC2
+### 3.4 Deploy to AWS Lambda (Recommended)
 
-If you want to host the backend on AWS:
-
-```bash
-# Launch EC2 (t2.micro for free tier)
-# SSH into instance, then:
-
-sudo apt update && sudo apt install -y nodejs npm git
-git clone https://github.com/vivekmaurya18/AI-Code-Explainer.git
-cd AI-Code-Explainer/backend
-npm install
-
-# Set environment variables via AWS Systems Manager Parameter Store
-# OR create .env directly (not recommended for production)
-
-npm install -g pm2
-pm2 start server.js --name simplifai
-```
-
-> 💡 **Pro tip:** Use **AWS IAM Instance Roles** instead of `.env` files for EC2 deployments — no credentials stored on disk!
+1. Create a parameterless Node.js **AWS Lambda** function.
+2. Copy the contents of `test/index.mjs` into the Lambda code editor.
+3. Configure the **AWS API Gateway** (HTTP API) pointing to this Lambda function with routes:
+   - `POST /`
+   - `POST /run`
+4. Configure CORS directly on the API Gateway left navigation panel:
+   - Allow origins: `*`
+   - Allow headers: `*`
+   - Allow methods: `OPTIONS, POST`
+5. Click **Deploy**.
 
 ---
 
@@ -316,15 +305,12 @@ aws s3api put-bucket-policy \
 
 ### 4.5 Update API Endpoint in Frontend
 
-Before uploading, update the backend API URL in `frontend/script.js`:
+Before uploading, update the backend API URL in `frontend/script.js` to match your API Gateway endpoint:
 
 ```javascript
-// Find this line and update with your backend URL:
-const API_BASE_URL = 'http://YOUR_BACKEND_URL:3000';
-// Example for EC2:
-const API_BASE_URL = 'http://ec2-xx-xx-xx-xx.ap-south-1.compute.amazonaws.com:3000';
-// Example for local testing:
-const API_BASE_URL = 'http://localhost:3000';
+/* ──────────── API CONFIG ──────────── */
+const API_URL = 'https://your-api-id.execute-api.us-east-1.amazonaws.com/';
+const RUN_API_URL = 'https://your-api-id.execute-api.us-east-1.amazonaws.com/run'; 
 ```
 
 ### 4.6 Upload Frontend Files
@@ -336,11 +322,14 @@ aws s3 sync frontend/ s3://$BUCKET_NAME/ \
   --cache-control "max-age=86400"
 ```
 
-### 4.7 Get Your Website URL
+### 4.7 Configure CloudFront for HTTPS (Production)
 
-```bash
-echo "Website URL: http://$BUCKET_NAME.s3-website-$REGION.amazonaws.com"
-```
+To avoid mixed-content or CORS issues with jsPDF and downloads, it is necessary to secure S3 with HTTPS via Amazon CloudFront.
+1. Jump to the **Amazon CloudFront** Console -> Create Distribution.
+2. Under Origin Domain select the S3 bucket created.
+3. Keep OAC configurations if restricting bucket accesses or keep them public if public policy is applied.
+4. Under Default Cache Behavior -> Viewer protocol policy: **Redirect HTTP to HTTPS**
+5. Deploy Distribution. Wait 5 mins for the Global domain (d...cloudfront.net) to propagate.
 
 Your site is now live! 🎉
 

@@ -85,7 +85,7 @@ mindmap
 ```mermaid
 flowchart TD
     subgraph CLIENT["🖥️ Client Layer"]
-        WEB["🌐 React.js Web App"]
+        WEB["🌐 Vanilla JS Web App"]
         MOB["📱 Mobile / Tablet"]
     end
 
@@ -135,12 +135,12 @@ flowchart TD
 
 | Step | Actor | Action |
 |---|---|---|
-| **1** | User | Submits code through React.js frontend |
+| **1** | User | Submits code through Vanilla JS frontend |
 | **2** | CloudFront | Serves static assets from S3 with edge caching |
-| **3** | API Gateway | Routes request → Lambda Authorizer validates session |
-| **4** | Code Parser Lambda | Detects language via AST analysis |
+| **3** | API Gateway | Routes request → Lambda validates API structure |
+| **4** | Code Parser Lambda | Prepares code payload for AI Engine |
 | **5** | Explanation Engine | Crafts Hinglish prompt → sends to Amazon Bedrock |
-| **6** | Claude 3.5 Sonnet | Generates Hinglish explanation with cultural context |
+| **6** | Amazon Nova Lite | Generates Hinglish explanation with STDIN outputs |
 | **7** | Cultural Analogy Engine | Enhances response with selected theme analogies |
 | **8** | API Gateway | Returns enriched JSON to browser |
 | **9** | DynamoDB + S3 | Caches results for repeat queries |
@@ -155,13 +155,13 @@ flowchart TD
 |---|---|
 | Code input with syntax highlighting | **Monaco Editor** (VS Code engine) |
 | Theme selection — Cricket / Bollywood / Recipe | **React.js** + **Tailwind CSS** |
-| Line-by-line explanation display | **React.js** components |
-| Expandable explanation sections | State-managed accordion UI |
+| Explain / Debug logic | State-managed accordion UI |
 | Complexity visualization | Animated Big-O Chart component |
-| Quiz generation | MCQ Panel component |
-| PDF report download | Client-side PDF generator |
+| Quiz generation | Quick self-assessment MCQ Panel |
+| AI Code Runner | Securely invokes AI for expected standard STDOUT output |
+| PDF report download | Custom multi-page PDF generator (jsPDF) |
 
-**Tech Stack:** React.js / Next.js · Tailwind CSS · Monaco Editor
+**Tech Stack:** Vanilla JavaScript · CSS · HTML
 
 ---
 
@@ -177,10 +177,8 @@ flowchart TD
 **Endpoints:**
 
 ```
-POST  /explain     →  Hinglish code explanation
-POST  /debug       →  Friendly error analysis
-POST  /quiz        →  5 MCQ generation from code
-POST  /complexity  →  Big-O time & space analysis
+POST  /      →  Hinglish code explanation, debugger, and quiz.
+POST  /run   →  Simulates running code and returning output
 ```
 
 ---
@@ -417,7 +415,7 @@ flowchart TD
 
 | Requirement | Designed Component | Status |
 |---|---|---|
-| Hinglish-first explanations | Hinglish Translator Engine + Claude 3.5 prompt templates | ✅ Fully Covered |
+| Hinglish-first explanations | Hinglish Translator Engine + Amazon Nova Lite templates | ✅ Fully Covered |
 | Cultural relatability | Cultural Analogy Engine — Cricket / Bollywood / Recipe | ✅ Fully Covered |
 | Beginner-friendly debugging | Galti Se Mistake Debugger with friendly tone | ✅ Fully Covered |
 | Theme-based learning | Theme Engine Lambda + DynamoDB persistence | ✅ Fully Covered |

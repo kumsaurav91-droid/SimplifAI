@@ -22,7 +22,7 @@
 
 **SimplifAI** is an AI-powered code explanation tool built specifically for Indian developers and students who find it easier to learn in **Hinglish** (Hindi + English). Unlike generic AI tools, SimplifAI uses relatable **Indian cultural analogies** to make complex programming concepts stick.
 
-## 💡 The Problem We Solve
+### 💡 The Problem We Solve
 
 | Problem | SimplifAI's Solution |
 |---|---|
@@ -32,7 +32,7 @@
 | Passive reading doesn't test understanding | Auto-generated 5-question MCQ quiz after every explanation |
 | No shareable learning artifact | One-click professional PDF report generator |
 
-## 🎯 Target Audience
+### 🎯 Target Audience
 
 Students and developers from **Tier 2 and Tier 3 cities** — Jaipur, Patna, Lucknow — where the primary medium of thought is Hindi, not English. SimplifAI bridges the language gap without compromising on technical depth.
 
@@ -40,22 +40,22 @@ Students and developers from **Tier 2 and Tier 3 cities** — Jaipur, Patna, Luc
 
 # ✨ Features
 
-## 🗣️ Hinglish-First Explanations
+### 🗣️ Hinglish-First Explanations
 Code explanations in natural Hinglish — the way a dost (friend) would explain it, not a textbook.
 
-## 🏏 Indian Analogies Engine
+### 🏏 Indian Analogies Engine
 - **Arrays** → IPL team roster
 - **Loops** → Cricket overs (har ball ek iteration)
 - **Functions** → Biryani recipe (ek baar likhao, baar baar use karo)
 - **Classes** → Bollywood film family
 
-## 📊 Complexity Visualizer *(NEW)*
+### 📊 Complexity Visualizer
 Animated **Big-O chart** showing Time & Space complexity — O(1), O(n), O(n²) — with best/average/worst case breakdowns.
 
-## 🧩 Instant Quiz Generator *(NEW)*
+### 🧩 Instant Quiz Generator
 After every explanation, **5 MCQ questions** are auto-generated based on *your specific code* — not generic questions. Instant Hinglish feedback with grade (S/A/B/C).
 
-## 📄 PDF Report Generator *(NEW)*
+### 📄 PDF Report Generator
 One-click **4-page professional PDF** containing:
 - Cover page with language, complexity score, and quiz grade
 - Submitted code with line numbers
@@ -63,10 +63,10 @@ One-click **4-page professional PDF** containing:
 - Complexity analysis with Big-O scale
 - Complete quiz results with per-question breakdown
 
-## 🔍 Multi-Language Support
+### 🔍 Multi-Language Support
 Dedicated support for **Python, JavaScript, Java, C++, SQL** — plus Auto Detect for TypeScript, Go, Rust, PHP, Swift, Kotlin, and more.
 
-## 🎚️ Skill Levels
+### 🎚️ Skill Levels
 Choose your depth: 
 - **🌱 Beginner** (no jargon) 
 - **⚡ Intermediate** (patterns & logic) 
@@ -75,9 +75,13 @@ Choose your depth:
 ---
 
 ## 🚀 Live Project Access
-* **Live Demo:** [**SimplifAI.dev.aws**](http://simplifai-frontend-hackathon-2026.s3-website-us-east-1.amazonaws.com)
+* **Live Demo:** [**SimplifAI.dev**](https://d2t805jkc0zu1t.cloudfront.net/)
+* **Resources:** [**SimplifAI.dev Resources**](https://drive.google.com/drive/folders/1CPafqG54rqeX4p7IZNYKUBSLJjYbNafc?usp=drive_link)
+---
 
-* **Resources:** [**SimplifAI Resources**](https://drive.google.com/drive/folders/1CPafqG54rqeX4p7IZNYKUBSLJjYbNafc?usp=drive_link)
+## 💻 Optimal Viewing Experience
+> [!IMPORTANT]
+> **For the best user experience, it is highly recommended to view the live website in Desktop Mode.** The dashboard's glassmorphism effects and real-time risk charts are optimized for larger screens to provide full clarity of the diagnostic data.
 
 ---
 
@@ -86,10 +90,10 @@ Choose your depth:
 | Layer | Technology | Purpose |
 |---|---|---|
 | **AI Engine** | Amazon Nova 2 Lite via AWS Bedrock | Code understanding & Hinglish generation |
-| **Backend** | Node.js + Express.js | REST API & AWS Bedrock integration |
+| **Backend** | AWS Lambda + API Gateway | Serverless scalable backend & AI Integration |
 | **Frontend** | Vanilla HTML/CSS/JavaScript | Lightweight, fast-loading UI |
 | **PDF Generation** | pdf.js (custom implementation) | Client-side PDF report generation |
-| **Hosting** | AWS S3 Static Website | Frontend deployment |
+| **Hosting** | AWS S3 + Amazon CloudFront | Secure HTTPS delivery with Edge caching |
 | **Testing** | Node.js ESM test suite | Bedrock API connectivity tests |
 
 ---
@@ -99,8 +103,8 @@ Choose your depth:
 ```
 SimplifAI/
 │
-├── 📂 backend/                     # Node.js Express API server
-│   ├── server.js                   # Main Express server (API routes)
+├── 📂 backend/                     # Serverless / Local testing Backend
+│   ├── server.js                   # Express server (For local testing only)
 │   ├── test-bedrock.js             # AWS Bedrock connectivity tester
 │   ├── package.json                # Node dependencies & scripts
 │   ├── .env                        # 🔒 Environment variables (DO NOT COMMIT)
@@ -112,8 +116,8 @@ SimplifAI/
 │   ├── pdf.js                      # PDF report generation engine
 │   └── style.css                   # Styling & animations
 │
-├── 📂 test/                        # Test suite
-│   └── index.mjs                   # API integration tests (ESM)
+├── 📂 test/                        # Test suite & AWS Lambda Code
+│   └── index.mjs                   # Actual AWS Lambda Production Code
 │
 ├── .gitignore                      # Git ignore rules
 ├── DEPLOYMENT.md                   # Deployment guide
@@ -270,11 +274,13 @@ Load pre-built examples directly in the UI using the snippet buttons (Loop, Func
 
 ## 📡 API Reference
 
-### `POST /api/explain`
-
+### `POST /`
 Sends code to Amazon Nova 2 Lite and returns a Hinglish explanation.
 
-**Request Body:**
+### `POST /run`
+Simulates live code execution using Amazon Nova 2 Lite with STDIN input support. Returning console output safely.
+
+**Example Request:**
 ```json
 {
   "code": "for i in range(10):\n    print(i)",

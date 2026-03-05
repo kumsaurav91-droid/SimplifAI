@@ -1,17 +1,51 @@
-/* ═══════════════════════════════════════════════════════
-     SimplifAI — Production JS (Fully Bug-Fixed)
-     FIXES APPLIED:
-     1. Quiz same-answer bug → shuffleOpts() randomizes positions
-     2. Dead code removed → formatText(), doDownload() gone
-     3. Tab 'debug' conflict → switchTab handles all 4 tabs
-     4. chooseOpt double-fire guard added
-     5. retryQuiz animation fixed
-     6. PDF: user answer + correct answer clearly labelled per question
-     7. outActions display:flex consistent
-     8. Duplicate APP.debugData init removed (was set twice)
-  ═══════════════════════════════════════════════════════ */
+/* ──────────── 1. MOBILE ERROR HANDLER ──────────── */
+window.onerror = function (msg, src, line) {
+  document.body.style.cssText =
+    'background:#09090b;color:white;padding:30px;font-family:sans-serif;min-height:100vh;';
+  document.body.innerHTML =
+    '<div style="max-width:400px;margin:40px auto;text-align:center;">' +
+    '<div style="font-size:48px;margin-bottom:16px;">&#x26A0;&#xFE0F;</div>' +
+    '<h2 style="color:#ff6b35;margin-bottom:8px;">Kuch Error Aa Gaya</h2>' +
+    '<p style="color:#aaa;font-size:14px;margin-bottom:8px;">' + msg + '</p>' +
+    '<p style="color:#666;font-size:12px;">Line: ' + line + '</p>' +
+    '<button onclick="location.reload()" style="margin-top:20px;padding:10px 24px;' +
+    'background:#ff6b35;color:white;border:none;border-radius:8px;font-size:14px;cursor:pointer;">' +
+    'Reload Karo</button></div>';
+  return false;
+};
 
-/* ──────────── GLOBAL STATE ──────────── */
+/* ──────────── 2. SAFE DOM HELPER ──────────── */
+const $ = id => document.getElementById(id);
+
+/* ──────────── 3. DEBOUNCE UTILITY ──────────── */
+function debounce(fn, delay) {
+  let timer;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+/* ──────────── 4. SAFE localStorage HELPERS ──────────── */
+function lsGet(key, fallback) {
+  try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(key, val); } catch (e) { /* ignore */ }
+}
+
+/* ──────────── 5. AI RESPONSE CACHE (in-memory) ──────────── */
+const AI_CACHE = {};
+function cacheKey(code, lang, level, analogy) {
+  return [lang, level, analogy, code.trim().substring(0, 200)].join('|');
+}
+
+/* ──────────── 6. API CONFIG ──────────── */
+const API_URL = 'https://xjozftbix8.execute-api.us-east-1.amazonaws.com/'; // For explain (POST /)
+const RUN_API_URL = 'https://xjozftbix8.execute-api.us-east-1.amazonaws.com/run'; // For run code (POST /run)
+const API_TIMEOUT = 12000;
+
+/* ──────────── 7. GLOBAL STATE ──────────── */
 const APP = {
   analogy: 'cricket',
   langPill: 'Python',
@@ -24,34 +58,37 @@ const APP = {
   quizData: null,
   debugData: null,
   hasExplained: false,
-  explCount: parseInt(localStorage.getItem('sai_expl_count') || '0'),
+  runOutputHTML: null,
+  explCount: parseInt(lsGet('sai_expl_count', '0')),
   quizState: { qs: [], cur: 0, score: 0, sel: null, answered: [], done: false }
 };
 
-document.getElementById('explCount').textContent = APP.explCount;
+const explCountEl = $('explCount');
+if (explCountEl) explCountEl.textContent = APP.explCount;
 
-/* ──────────── SAMPLES ──────────── */
+/* ──────────── 8. SAMPLES ──────────── */
 const SAMPLES = {
-  loop: `for i in range(5):\n    print(i)`,
-  fn: `def greet(name):\n    message = "Hello, " + name + "!"\n    return message\n\nresult = greet("Vivek")\nprint(result)`,
-  cls: `class Student:\n    def __init__(self, name, marks):\n        self.name = name\n        self.marks = marks\n\n    def grade(self):\n        if self.marks >= 90:\n            return "A"\n        elif self.marks >= 75:\n            return "B"\n        return "C"\n\ns = Student("Rahul", 88)\nprint(s.grade())`,
-  nested: `def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    return arr\n\nprint(bubble_sort([64, 34, 25, 12, 22]))`
+  loop: 'for i in range(5):\n    print(i)',
+  fn: 'def greet(name):\n    message = "Hello, " + name + "!"\n    return message\n\nresult = greet("Vivek")\nprint(result)',
+  cls: 'class Student:\n    def __init__(self, name, marks):\n        self.name = name\n        self.marks = marks\n\n    def grade(self):\n        if self.marks >= 90:\n            return "A"\n        elif self.marks >= 75:\n            return "B"\n        return "C"\n\ns = Student("Rahul", 88)\nprint(s.grade())',
+  nested: 'def bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n    return arr\n\nprint(bubble_sort([64, 34, 25, 12, 22]))'
 };
 
 function loadSample(k) {
-  document.getElementById('codeInput').value = SAMPLES[k] || '';
+  const ci = $('codeInput');
+  if (ci) ci.value = SAMPLES[k] || '';
   updateMeter();
-  toast('Sample load ho gaya! ✨');
+  toast('Sample load ho gaya!');
 }
 
-/* ──────────── COMPLEXITY METER ──────────── */
+/* ──────────── 9. COMPLEXITY METER ──────────── */
 function updateMeter() {
-  const code = document.getElementById('codeInput').value;
-  if (!code.trim()) {
-    document.getElementById('meterFill').style.width = '0%';
-    document.getElementById('meterVal').textContent = '—';
-    return;
-  }
+  const ci = $('codeInput');
+  const fill = $('meterFill');
+  const val = $('meterVal');
+  if (!ci || !fill || !val) return;
+  const code = ci.value;
+  if (!code.trim()) { fill.style.width = '0%'; val.textContent = '--'; return; }
   let s = 0;
   s += Math.min(code.split('\n').length * 3, 40);
   if (/for|while/i.test(code)) s += 20;
@@ -59,11 +96,12 @@ function updateMeter() {
   if (/class\s/i.test(code)) s += 10;
   if (/def\s|function/i.test(code)) s += 10;
   s = Math.min(s, 100);
-  document.getElementById('meterFill').style.width = s + '%';
-  document.getElementById('meterVal').textContent = s + '%';
+  fill.style.width = s + '%';
+  val.textContent = s + '%';
 }
+const debouncedMeter = debounce(updateMeter, 300);
 
-/* ──────────── LANG / ANALOGY ──────────── */
+/* ──────────── 10. LANG / ANALOGY ──────────── */
 function selLang(el, lang) {
   document.querySelectorAll('.lang-pill').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
@@ -76,11 +114,11 @@ function selAnalogy(el, a) {
   APP.analogy = a;
 }
 
-/* ──────────── TAB SWITCHING (all 4 tabs) ──────────── */
+/* ──────────── 11. TAB SWITCHING ──────────── */
 function switchTab(tab) {
   APP.currentTab = tab;
-  ['expl', 'debug', 'cx', 'quiz'].forEach(t => {
-    const el = document.getElementById('tab-' + t);
+  ['expl', 'debug', 'cx', 'quiz', 'run'].forEach(t => {
+    const el = $('tab-' + t);
     if (el) el.classList.toggle('active', t === tab);
   });
   renderCurrentTab();
@@ -90,55 +128,78 @@ function renderCurrentTab() {
   if (APP.currentTab === 'debug') renderDebugResult();
   else if (APP.currentTab === 'cx') renderComplexity();
   else if (APP.currentTab === 'quiz') renderQuiz();
+  else if (APP.currentTab === 'run') renderRunTab();
   else renderExplanation();
 }
 
-function renderExplanation() {
-  const body = document.getElementById('outBody');
-  body.innerHTML = APP.explanation
-    ? APP.explanationHTML
-    : `<div class="placeholder-state"><div class="icon">🤖</div><h3>SimplifAI Ready Hai!</h3><p>Code paste karo aur "Explain Karo!" dabao — Hinglish mein samjho!</p></div>`;
+/* ── Render the Output/Run tab ── */
+function renderRunTab() {
+  const body = $('outBody');
+  if (!body) return;
+  // If we already have run output stored, show it
+  if (APP.runOutputHTML) {
+    body.innerHTML = APP.runOutputHTML;
+  } else {
+    body.innerHTML =
+      '<div class="placeholder-state">' +
+      '<div class="icon">▶️</div>' +
+      '<h3>Output Ready Nahi Hai!</h3>' +
+      '<p>"Run Karo & Output Dekho" button dabao — code ka output yahan milega!</p>' +
+      '</div>';
+  }
 }
 
-/* ═══════════════════════════════════════════════════════
+function renderExplanation() {
+  const body = $('outBody');
+  if (!body) return;
+  body.innerHTML = APP.explanation
+    ? APP.explanationHTML
+    : '<div class="placeholder-state"><div class="icon">&#x1F916;</div>' +
+    '<h3>SimplifAI Ready Hai!</h3>' +
+    '<p>Code paste karo aur "Explain Karo!" dabao — Hinglish mein samjho!</p></div>';
+}
+
+/* ============================================================
    MODULE 1 — analyzeCode()
-═══════════════════════════════════════════════════════ */
+   ============================================================ */
 function analyzeCode(code) {
   const nested = /(for|while)[\s\S]{1,300}(for|while)/i.test(code);
   const loop = /\b(for|while)\b/i.test(code);
-  const recursion = /def\s+(\w+)[\s\S]*?\1\s*\(/i.test(code) || /function\s+(\w+)[\s\S]*?\1\s*\(/i.test(code);
+  const recursion = /def\s+(\w+)[\s\S]*?\1\s*\(/i.test(code) ||
+    /function\s+(\w+)[\s\S]*?\1\s*\(/i.test(code);
   const lines = code.split('\n').length;
-
   let time, tScore, space, sScore, insight, hiIdx;
+
   if (nested) {
-    time = 'O(n²)'; tScore = 85; hiIdx = 4;
-    insight = '🔴 <strong>Nested loops = O(n²)!</strong> 100 elements pe 10,000 operations. Bade data pe bahut slow hoga. Consider hash map ya single-pass approach.';
+    time = 'O(n2)'; tScore = 85; hiIdx = 4;
+    insight = 'Nested loops = O(n2)! 100 elements pe 10,000 operations. Bade data pe bahut slow. Hash map consider karo.';
   } else if (recursion) {
     time = 'O(log n)'; tScore = 45; hiIdx = 1;
-    insight = '🟢 <strong>Recursion detected!</strong> Divide & conquer ki tarah — jaise IPL bracket mein teams half hoti hain. Memoization add karo aur bhi fast!';
+    insight = 'Recursion detected! Divide & conquer approach. Memoization add karo aur bhi fast ho jayega!';
   } else if (loop) {
     time = 'O(n)'; tScore = 40; hiIdx = 2;
-    insight = '🟡 <strong>Linear time!</strong> Data ke saath proportionally badhta hai. Manageable for most use cases.';
+    insight = 'Linear time! Data ke saath proportionally badhta hai. Most use cases ke liye sahi hai.';
   } else {
     time = 'O(1)'; tScore = 10; hiIdx = 0;
-    insight = '🏆 <strong>Constant time!</strong> Input size se bilkul fark nahi padta. Optimal hai!';
+    insight = 'Constant time! Input size se bilkul fark nahi padta. Optimal hai!';
   }
-  space = lines < 10 ? 'O(1)' : lines < 30 ? 'O(n)' : 'O(n²)';
+  space = lines < 10 ? 'O(1)' : lines < 30 ? 'O(n)' : 'O(n2)';
   sScore = lines < 10 ? 15 : lines < 30 ? 40 : 75;
   const cxScore = Math.round((tScore + sScore) / 2);
   return { time, tScore, space, sScore, cxScore, lines, insight, hiIdx };
 }
 
-/* ═══════════════════════════════════════════════════════
+/* ============================================================
    MODULE 2 — buildStructuredExplanation()
-═══════════════════════════════════════════════════════ */
+   ============================================================ */
 function buildStructuredExplanation(code, lang, level, analogy, cx) {
   const langName = APP.langPill;
   const hasLoop = /\b(for|while)\b/i.test(code);
   const hasFn = /\b(def|function)\b/i.test(code);
   const hasCls = /\bclass\b/i.test(code);
   const hasNested = /(for|while)[\s\S]{1,300}(for|while)/i.test(code);
-  const hasRecur = /def\s+(\w+)[\s\S]*?\1\s*\(/i.test(code) || /function\s+(\w+)[\s\S]*?\1\s*\(/i.test(code);
+  const hasRecur = /def\s+(\w+)[\s\S]*?\1\s*\(/i.test(code) ||
+    /function\s+(\w+)[\s\S]*?\1\s*\(/i.test(code);
   const hasCond = /\bif\b/i.test(code);
   const hasArr = /\[|\bpush\b|\bpop\b|append/i.test(code);
   const hasDict = /\{|dict\b/i.test(code);
@@ -146,11 +207,11 @@ function buildStructuredExplanation(code, lang, level, analogy, cx) {
   const isHindi = lang === 'Hinglish' || lang === 'Hindi';
 
   const analogies = {
-    cricket: { loop: 'cricket over (6 balls)', fn: 'batting playbook', arr: 'team lineup', cls: 'team blueprint', cond: 'DRS review decision', iter: 'har ball' },
-    bollywood: { loop: 'item song replay', fn: 'hero entry scene', arr: 'star cast list', cls: 'film production house', cond: 'plot twist moment', iter: 'har scene' },
-    food: { loop: 'chai rounds (roz subah)', fn: 'biryani recipe', arr: 'thali items', cls: 'restaurant menu template', cond: 'mirchi ya meethi choice', iter: 'har serving' },
-    school: { loop: 'revision cycle', fn: 'formula card', arr: 'class roll list', cls: 'syllabus template', cond: 'pass/fail check', iter: 'har chapter' },
-    none: { loop: 'iteration block', fn: 'reusable function', arr: 'ordered list', cls: 'class blueprint', cond: 'conditional check', iter: 'each item' }
+    cricket: { loop: 'cricket over', fn: 'batting playbook', arr: 'team lineup', cls: 'team blueprint', cond: 'DRS review', iter: 'har ball' },
+    bollywood: { loop: 'item song replay', fn: 'hero entry scene', arr: 'star cast', cls: 'film production house', cond: 'plot twist', iter: 'har scene' },
+    food: { loop: 'chai rounds', fn: 'biryani recipe', arr: 'thali items', cls: 'restaurant menu template', cond: 'mirchi ya meethi', iter: 'har serving' },
+    school: { loop: 'revision cycle', fn: 'formula card', arr: 'class roll', cls: 'syllabus template', cond: 'pass/fail check', iter: 'har chapter' },
+    none: { loop: 'iteration', fn: 'function', arr: 'list', cls: 'blueprint', cond: 'condition', iter: 'each item' }
   };
   const a = analogies[analogy] || analogies.cricket;
 
@@ -165,132 +226,105 @@ function buildStructuredExplanation(code, lang, level, analogy, cx) {
   const lineExplanations = nonEmptyLines.slice(0, 8).map(rawLine => {
     const t = rawLine.trim();
     let expl = '';
-    if (/^(import|from|require|#include)/i.test(t)) {
-      expl = isHindi ? 'Baahri library/module ko load karta hai — jaise pehle tools ready karna.' : 'Imports an external module — like loading tools before work.';
-    } else if (/^(def |function )/i.test(t)) {
-      const fnName = t.match(/(?:def|function)\s+(\w+)/)?.[1] || 'function';
-      expl = isHindi ? `<code>${escHtml(fnName)}</code> naam ka function define kiya — jaise ${a.fn}. Jab chahiye tab call karo!` : `Defines function <code>${escHtml(fnName)}</code> — reusable block.`;
+    if (/^(import|from|require|#include)/i.test(t)) expl = isHindi ? 'Baahri library load karta hai.' : 'Imports an external module.';
+    else if (/^(def |function )/i.test(t)) {
+      const fn = t.match(/(?:def|function)\s+(\w+)/)?.[1] || 'function';
+      expl = isHindi ? escHtml(fn) + ' naam ka function — jaise ' + a.fn + '.' : 'Defines function ' + escHtml(fn) + ' — reusable block.';
     } else if (/^class\s/i.test(t)) {
-      const clsName = t.match(/class\s+(\w+)/)?.[1] || 'class';
-      expl = isHindi ? `<code>${escHtml(clsName)}</code> class — jaise ${a.cls}. Isse objects banate hain!` : `Defines class <code>${escHtml(clsName)}</code> — a blueprint for objects.`;
+      const cl = t.match(/class\s+(\w+)/)?.[1] || 'class';
+      expl = isHindi ? escHtml(cl) + ' class — jaise ' + a.cls + '. Isse objects banate hain!' : 'Defines class ' + escHtml(cl) + ' — object blueprint.';
     } else if (/\bfor\b.+\bin\b/i.test(t)) {
-      const iterVar = t.match(/for\s+(\w+)/)?.[1] || 'item';
-      expl = isHindi ? `Loop — jaise ${a.loop}. <code>${escHtml(iterVar)}</code> ko ${a.iter} update karta hai.` : `For loop — iterates each item. <code>${escHtml(iterVar)}</code> updates every pass.`;
-    } else if (/\bfor\b|\bwhile\b/i.test(t)) {
-      expl = isHindi ? `Loop — jaise ${a.loop}. Condition true hone tak repeat!` : `Loop — repeats until condition is false.`;
-    } else if (/\bif\b/i.test(t)) {
-      expl = isHindi ? `Condition check — jaise ${a.cond}. Sirf ek rasta execute hoga!` : `Conditional — only one path executes.`;
-    } else if (/\breturn\b/i.test(t)) {
-      expl = isHindi ? 'Result wapas bhejta hai caller ko. Function ka kaam khatam!' : 'Returns result to the caller.';
-    } else if (/print\(|console\.log|System\.out|printf|cout/i.test(t)) {
-      expl = isHindi ? 'Screen pe output dikhata hai — debugging ka best friend! 🖥️' : 'Prints output to the screen.';
-    } else if (/\[|\bappend\b|\bpush\b/i.test(t)) {
-      expl = isHindi ? `List/Array operation — jaise ${a.arr} mein items add/access karna.` : 'List or array operation.';
-    } else if (/=/.test(t) && !/==/.test(t)) {
-      const varName = t.match(/(\w+)\s*=/)?.[1] || 'variable';
-      expl = isHindi ? `<code>${escHtml(varName)}</code> mein value store ho rahi hai — jaise dabba mein data!` : `Stores value in <code>${escHtml(varName)}</code>.`;
-    } else {
-      expl = isHindi ? 'Yeh line important logic execute kar rahi hai.' : 'Executes part of the core logic.';
-    }
+      const iv = t.match(/for\s+(\w+)/)?.[1] || 'item';
+      expl = isHindi ? 'Loop — jaise ' + a.loop + '. ' + escHtml(iv) + ' ko ' + a.iter + ' update karta hai.' : 'For loop — ' + escHtml(iv) + ' updates every pass.';
+    } else if (/\bfor\b|\bwhile\b/i.test(t)) expl = isHindi ? 'Loop — condition true hone tak repeat!' : 'Loop — repeats until condition is false.';
+    else if (/\bif\b/i.test(t)) expl = isHindi ? 'Condition check — jaise ' + a.cond + '. Sirf ek rasta execute hoga!' : 'Conditional — only one path executes.';
+    else if (/\breturn\b/i.test(t)) expl = isHindi ? 'Result wapas bhejta hai caller ko.' : 'Returns result to the caller.';
+    else if (/print\(|console\.log|System\.out|printf|cout/i.test(t))
+      expl = isHindi ? 'Screen pe output dikhata hai — debugging ka best friend!' : 'Prints output to the screen.';
+    else if (/\[|\bappend\b|\bpush\b/i.test(t)) expl = isHindi ? 'List/Array — jaise ' + a.arr + '.' : 'List or array operation.';
+    else if (/=/.test(t) && !/==/.test(t)) {
+      const vn = t.match(/(\w+)\s*=/)?.[1] || 'variable';
+      expl = isHindi ? escHtml(vn) + ' mein value store ho rahi hai.' : 'Stores value in ' + escHtml(vn) + '.';
+    } else expl = isHindi ? 'Yeh line important logic execute kar rahi hai.' : 'Executes part of the core logic.';
     return { code: t, expl };
   });
 
   const hasOutput = /print\(|console\.log|System\.out|printf|cout/i.test(code);
   let outputPreview = '';
   if (hasOutput) {
-    const printMatches = code.match(/print\(([^)]{1,60})\)|console\.log\(([^)]{1,60})\)/g) || [];
-    const sampleOutputs = printMatches.slice(0, 4).map(m => {
+    const pm = code.match(/print\(([^)]{1,60})\)|console\.log\(([^)]{1,60})\)/g) || [];
+    const so = pm.slice(0, 4).map(m => {
       const arg = m.replace(/print\(|console\.log\(|\)$/g, '').trim();
-      return /^["']/.test(arg) ? arg.replace(/^["']|["']$/g, '') : `[value of ${arg}]`;
+      return /^["']/.test(arg) ? arg.replace(/^["']|["']$/g, '') : '[value of ' + arg + ']';
     });
-    outputPreview = sampleOutputs.length ? sampleOutputs.join('\n') : (isHindi ? 'Output screen pe print hoga...' : 'Output prints to screen...');
+    outputPreview = so.length ? so.join('\n') : (isHindi ? 'Output screen pe print hoga...' : 'Output prints to screen...');
   }
 
   const opts = [];
-  if (hasNested) opts.push({ title: 'Nested Loop Optimize Karo', body: isHindi ? 'Nested loops se O(n²) complexity aati hai. Dictionary ya hash map use karo — same kaam O(n) mein!' : 'Nested loops = O(n²). Use a hash map to reduce to O(n) — 100x faster on large data.' });
-  if (hasArr && !hasDict) opts.push({ title: 'Sahi Data Structure Chuno', body: isHindi ? 'Lookup ke liye set ya dict use karo — O(1) search milega instead of O(n) list search.' : 'For lookups, use set/dict (O(1)) instead of list (O(n) scan).' });
-  if (hasRecur) opts.push({ title: 'Memoization Add Karo', body: isHindi ? 'Recursive calls same subproblems baar baar solve karte hain. @lru_cache use karo!' : 'Add memoization (@lru_cache) to avoid recalculating same subproblems.' });
-  if (opts.length === 0) opts.push({ title: isHindi ? 'Code Efficient Hai!' : 'Code Looks Efficient!', body: isHindi ? `${cx.time} complexity — bilkul sahi. Type hints aur docstrings add karo production ke liye.` : `${cx.time} is appropriate. Consider adding type hints and docstrings.` });
+  if (hasNested) opts.push({ title: 'Nested Loop Optimize Karo', body: isHindi ? 'Nested loops se O(n2). Hash map use karo — same kaam O(n) mein!' : 'Use a hash map to reduce O(n2) to O(n).' });
+  if (hasArr && !hasDict) opts.push({ title: 'Sahi Data Structure Chuno', body: isHindi ? 'Lookup ke liye dict use karo — O(1) search milega.' : 'Use dict/set (O(1)) instead of list (O(n) scan).' });
+  if (hasRecur) opts.push({ title: 'Memoization Add Karo', body: isHindi ? 'Same subproblems baar baar solve hote hain. @lru_cache try karo!' : 'Add @lru_cache to avoid recalculating subproblems.' });
+  if (!opts.length) opts.push({ title: isHindi ? 'Code Efficient Hai!' : 'Code Looks Efficient!', body: isHindi ? cx.time + ' — bilkul sahi. Type hints aur docstrings bhi add karo.' : cx.time + ' is appropriate. Consider adding type hints.' });
 
-  const optsHTML = opts.map(o => `
-        <div class="expl-opt-card">
-          <div style="font-weight:800;margin-bottom:5px;color:var(--teal);font-size:13px;">${o.title}</div>
-          <div style="font-size:13px;line-height:1.75;">${o.body}</div>
-        </div>`).join('');
+  const optsHTML = opts.map(o =>
+    '<div class="expl-opt-card">' +
+    '<div style="font-weight:800;margin-bottom:5px;color:var(--teal);font-size:13px;">' + o.title + '</div>' +
+    '<div style="font-size:13px;line-height:1.75;">' + o.body + '</div></div>'
+  ).join('');
 
-  const plainText = `SimplifAI Code Analysis\n${'─'.repeat(40)}\nLanguage: ${langName}  |  Algorithm: ${algoType}\nTime: ${cx.time}  |  Space: ${cx.space}\n\n${lineExplanations.map((l, i) => `${i + 1}. ${l.code}  →  ${l.expl.replace(/<[^>]+>/g, '')}`).join('\n')}\n\nOPTIMIZATIONS\n${opts.map(o => `• ${o.title}: ${o.body}`).join('\n')}`;
+  const plainText =
+    'SimplifAI Code Analysis\nLanguage: ' + langName + '  |  Algorithm: ' + algoType +
+    '\nTime: ' + cx.time + '  |  Space: ' + cx.space + '\n\n' +
+    lineExplanations.map((l, i) => (i + 1) + '. ' + l.code + '  ->  ' + l.expl.replace(/<[^>]+>/g, '')).join('\n') +
+    '\n\nOPTIMIZATIONS\n' + opts.map(o => '* ' + o.title + ': ' + o.body).join('\n');
 
-  const lineByLineHTML = lineExplanations.map((item, i) => `
-        <div style="display:grid;grid-template-columns:auto 1fr;gap:0;margin-bottom:12px;border-radius:10px;overflow:hidden;border:1px solid var(--border);">
-          <div style="background:rgba(255,107,53,.07);border-right:1px solid var(--border);padding:10px 12px;min-width:200px;max-width:260px;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#c4b5fd;word-break:break-all;line-height:1.6;">${escHtml(item.code)}</div>
-          </div>
-          <div style="padding:10px 14px;font-size:13px;line-height:1.75;color:rgba(241,239,255,.88);">
-            <span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:rgba(255,107,53,.15);color:var(--orange);font-size:10px;font-weight:800;text-align:center;line-height:20px;margin-right:8px;">${i + 1}</span>${item.expl}
-          </div>
-        </div>`).join('');
+  const lineByLineHTML = lineExplanations.map((item, i) =>
+    '<div style="display:grid;grid-template-columns:auto 1fr;gap:0;margin-bottom:12px;border-radius:10px;overflow:hidden;border:1px solid var(--border);">' +
+    '<div style="background:rgba(255,107,53,.07);border-right:1px solid var(--border);padding:10px 12px;min-width:140px;max-width:200px;">' +
+    '<code style="font-size:11px;color:#c4b5fd;word-break:break-all;line-height:1.6;white-space:pre-wrap;">' + escHtml(item.code) + '</code></div>' +
+    '<div style="padding:10px 14px;font-size:13px;line-height:1.75;color:rgba(241,239,255,.88);">' +
+    '<span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:rgba(255,107,53,.15);color:var(--orange);font-size:10px;font-weight:800;text-align:center;line-height:20px;margin-right:8px;">' + (i + 1) + '</span>' +
+    item.expl + '</div></div>'
+  ).join('');
 
   const bigSummary = isHindi
-    ? `Arre bhai, yeh <strong>${langName}</strong> code ${hasCls ? `ek <strong>system/module</strong> banata hai — classes aur functions se milkar. Jaise ${a.cls}!` : hasNested ? `<strong>nested loops</strong> use karta hai — ek loop ke andar doosra. Jaise ${a.loop} ke andar aur ek loop!` : hasLoop ? `ek <strong>loop</strong> use karta hai — ${a.loop} ki tarah. Har item pe ek kaam!` : hasFn ? `<strong>functions</strong> se kaam organize karta hai — jaise ${a.fn}.` : `seedha <strong>sequential logic</strong> follow karta hai.`}${hasCond ? ` Conditions bhi hain — jaise ${a.cond}.` : ''} ${lines.length} lines, ${cx.time} complexity.`
-    : `This <strong>${langName}</strong> code ${hasCls ? 'builds a <strong>modular system</strong> using classes and functions.' : hasNested ? 'uses <strong>nested loops</strong> for multi-dimensional processing.' : hasLoop ? 'uses a <strong>loop</strong> to iterate over data.' : hasFn ? 'organizes logic into <strong>reusable functions</strong>.' : 'follows <strong>sequential logic</strong>.'}${hasCond ? ' Conditional branches decide execution path.' : ''} Runs in <strong>${cx.time}</strong> across ${lines.length} lines.`;
+    ? 'Yeh ' + langName + ' code ' + (hasCls ? 'ek system banata hai — classes aur functions se.' : hasNested ? 'nested loops use karta hai.' : hasLoop ? 'ek loop use karta hai — ' + a.loop + ' ki tarah.' : hasFn ? 'functions se kaam organize karta hai.' : 'sequential logic follow karta hai.') + (hasCond ? ' Conditions bhi hain.' : '') + ' ' + lines.length + ' lines, ' + cx.time + ' complexity.'
+    : 'This ' + langName + ' code ' + (hasCls ? 'builds a modular system using classes.' : hasNested ? 'uses nested loops.' : hasLoop ? 'uses a loop to iterate.' : hasFn ? 'organizes logic into functions.' : 'follows sequential logic.') + (hasCond ? ' Conditional branches present.' : '') + ' Runs in ' + cx.time + ' across ' + lines.length + ' lines.';
 
-  return {
-    text: plainText,
-    html: `
-<div class="expl-block quiz-slide">
-  <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
-    <div class="expl-badge" style="color:var(--orange);background:rgba(255,107,53,.1);border-color:rgba(255,107,53,.2);">${langName}</div>
-    <div class="expl-badge" style="color:var(--violet2);background:rgba(124,58,237,.1);border-color:rgba(124,58,237,.2);">${algoType}</div>
-    <div class="expl-badge" style="color:var(--teal);background:rgba(6,214,160,.07);border-color:rgba(6,214,160,.15);">${cx.time} · ${cx.space}</div>
-    <div class="expl-badge" style="color:var(--muted);background:rgba(255,255,255,.04);border-color:var(--border);">${lines.length} lines</div>
-  </div>
-  <div class="expl-section">
-    <div class="expl-section-header"><span class="expl-hd-icon">💡</span>${isHindi ? 'Kya Hai Yeh Code?' : 'What Is This Code?'}</div>
-    <div class="expl-section-body"><p style="font-size:14.5px;line-height:2;color:rgba(241,239,255,.92);">${bigSummary}</p></div>
-  </div>
-  <div class="expl-section">
-    <div class="expl-section-header"><span class="expl-hd-icon">📌</span>${isHindi ? 'Line-by-Line Samjhte Hain:' : 'Line-by-Line Breakdown:'}</div>
-    <div class="expl-section-body" style="padding-top:4px;">
-      ${lineByLineHTML}
-      ${nonEmptyLines.length > 8 ? `<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted);font-style:italic;">... aur ${nonEmptyLines.length - 8} aur lines hain</div>` : ''}
-    </div>
-  </div>
-  ${hasOutput ? `
-  <div class="expl-section">
-    <div class="expl-section-header" style="border-left-color:var(--teal);"><span class="expl-hd-icon">🖥️</span>${isHindi ? 'Expected Output (Console):' : 'Expected Output:'}</div>
-    <div class="expl-section-body" style="padding:0;">
-      <div style="background:#0a0a12;border-radius:0 0 10px 10px;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.9;border-top:1px solid var(--border);">
-        <div style="color:var(--muted2);font-size:10px;font-weight:700;letter-spacing:1px;margin-bottom:8px;text-transform:uppercase;">$ output</div>
-        <div style="color:var(--teal);">${outputPreview.split('\n').map(l => escHtml(l)).join('<br>')}</div>
-      </div>
-    </div>
-  </div>`: ''}
-</div>`,
-    optsHTML,
-    cx,
-    worstCase: cx.time,
-    avgCase: hasNested ? 'O(n²)' : cx.time,
-    algoType,
-    bigSummaryPlain: bigSummary.replace(/<[^>]+>/g, ''),
-    lineExplanations
-  };
+  const html =
+    '<div class="expl-block quiz-slide">' +
+    '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">' +
+    '<div class="expl-badge" style="color:var(--orange);background:rgba(255,107,53,.1);border-color:rgba(255,107,53,.2);">' + langName + '</div>' +
+    '<div class="expl-badge" style="color:var(--violet2);background:rgba(124,58,237,.1);border-color:rgba(124,58,237,.2);">' + algoType + '</div>' +
+    '<div class="expl-badge" style="color:var(--teal);background:rgba(6,214,160,.07);border-color:rgba(6,214,160,.15);">' + cx.time + ' \xb7 ' + cx.space + '</div>' +
+    '<div class="expl-badge" style="color:var(--muted);background:rgba(255,255,255,.04);border-color:var(--border);">' + lines.length + ' lines</div></div>' +
+    '<div class="expl-section"><div class="expl-section-header"><span class="expl-hd-icon">&#x1F4A1;</span>' + (isHindi ? 'Kya Hai Yeh Code?' : 'What Is This Code?') + '</div>' +
+    '<div class="expl-section-body"><p style="font-size:14.5px;line-height:2;color:rgba(241,239,255,.92);">' + bigSummary + '</p></div></div>' +
+    '<div class="expl-section"><div class="expl-section-header"><span class="expl-hd-icon">&#x1F4CC;</span>' + (isHindi ? 'Line-by-Line Samjhte Hain:' : 'Line-by-Line Breakdown:') + '</div>' +
+    '<div class="expl-section-body" style="padding-top:4px;">' + lineByLineHTML +
+    (nonEmptyLines.length > 8 ? '<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted);font-style:italic;">... aur ' + (nonEmptyLines.length - 8) + ' aur lines hain</div>' : '') +
+    '</div></div>' +
+    (hasOutput
+      ? '<div class="expl-section"><div class="expl-section-header" style="border-left-color:var(--teal);"><span class="expl-hd-icon">&#x1F5A5;&#xFE0F;</span>Expected Output:</div>' +
+      '<div class="expl-section-body" style="padding:0;"><div style="background:#0a0a12;border-radius:0 0 10px 10px;padding:14px 16px;font-family:monospace;font-size:12.5px;line-height:1.9;border-top:1px solid var(--border);">' +
+      '<div style="color:var(--muted2);font-size:10px;font-weight:700;letter-spacing:1px;margin-bottom:8px;text-transform:uppercase;">$ output</div>' +
+      '<div style="color:var(--teal);">' + outputPreview.split('\n').map(l => escHtml(l)).join('<br>') + '</div></div></div></div>'
+      : '') +
+    '</div>';
+
+  return { text: plainText, html, optsHTML, cx, algoType, bigSummaryPlain: bigSummary, lineExplanations };
 }
 
-/* ═══════════════════════════════════════════════════════
+/* ============================================================
    MODULE 3 — buildQuiz()
-   BUG FIX: shuffleOpts() randomises answer positions so
-   correct answer is NOT always the same index every time.
-═══════════════════════════════════════════════════════ */
+   ============================================================ */
 function shuffleOpts(opts, correctIdx) {
   const paired = opts.map((o, i) => ({ o, correct: i === correctIdx }));
   for (let i = paired.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [paired[i], paired[j]] = [paired[j], paired[i]];
   }
-  return {
-    opts: paired.map(p => p.o),
-    c: paired.findIndex(p => p.correct)
-  };
+  return { opts: paired.map(p => p.o), c: paired.findIndex(p => p.correct) };
 }
 
 function buildQuiz(code) {
@@ -300,88 +334,51 @@ function buildQuiz(code) {
   const hasCond = /\bif\b/i.test(code);
   const hasNested = /(for|while)[\s\S]{1,300}(for|while)/i.test(code);
   const hasCls = /\bclass\b/i.test(code);
-  const hasRecur = /def\s+(\w+)[\s\S]*?\1\s*\(/i.test(code) || /function\s+(\w+)[\s\S]*?\1\s*\(/i.test(code);
+  const hasRecur = /def\s+(\w+)[\s\S]*?\1\s*\(/i.test(code) ||
+    /function\s+(\w+)[\s\S]*?\1\s*\(/i.test(code);
 
-  /* Raw pool — correct answer always at index 0 here.
-     shuffleOpts() will randomise positions before rendering. */
-  const rawPool = [
-    hasCls && {
-      q: '🏛️ Class ka kya kaam hota hai programming mein?',
-      opts: ['Blueprint banata hai — jaise ek mould se kai objects', 'Loop chalata hai', 'Variables delete karta hai', 'Code ko fast banata hai'],
-      correctIdx: 0,
-      e: 'Bilkul! Class = mould/blueprint. Jaise ek biryani recipe se kaafi plates ban sakti hain!'
-    },
-    hasNested && {
-      q: '⚡ Nested loops ki time complexity kya hogi?',
-      opts: ['O(n²) — quadratic (bade data pe slow!)', 'O(1) — constant', 'O(n) — linear', 'O(log n) — logarithmic'],
-      correctIdx: 0,
-      e: 'Sahi! Nested loop = O(n²). 10×10=100 ops. 100×100=10,000 ops. Bade data pe bahut slow!'
-    },
-    hasLoop && {
-      q: '🔄 Loop tab tak kab chalta rehta hai?',
-      opts: ['Jab tak condition true ho', 'Sirf ek baar', 'Randomly rukta hai', 'Jab condition false ho jaaye'],
-      correctIdx: 0,
-      e: 'Correct! Loop = condition true rahne tak repeat. Jaise over tab tak chalti jab tak wicket na gire!'
-    },
-    hasFn && {
-      q: '🎬 Function ka sabse bada fayda kya hai?',
-      opts: ['Ek baar likho, baar baar use karo — reusability!', 'Code slow karta hai', 'Variables delete karta hai', 'Loop ki jagah use hota hai'],
-      correctIdx: 0,
-      e: 'Ekdum correct! Function = reusable recipe. Chai banane ki recipe ek baar likhi, kitni baar bhi banao!'
-    },
-    hasArr && {
-      q: '🎒 List mein .append() / .push() kya karta hai?',
-      opts: ['Naya element end mein add karta hai', 'Pehla element remove karta hai', 'Array sort karta hai', 'Sab elements delete karta hai'],
-      correctIdx: 0,
-      e: 'Wah! .append()/.push() = queue mein last mein join karna. Line ke end mein khade ho jaana!'
-    },
-    hasCond && {
-      q: '🚦 if-elif-else chain mein kya hota hai?',
-      opts: ['Pehli match hone wali condition chalti hai, baaki skip', 'Sab conditions hamesha check hoti hain', 'Hamesha else chalega', 'Loop ban jaata hai'],
-      correctIdx: 0,
-      e: 'Sahi! Traffic signal — green (if), yellow (elif), red (else). First match pe ruk jao!'
-    },
-    hasRecur && {
-      q: '♻️ Recursion mein function kya karta hai?',
-      opts: ['Khud ko hi call karta hai (self-call)', 'Doosre function ko call karta hai', 'Loop ki tarah sirf iteration karta hai', 'Memory clear karta hai'],
-      correctIdx: 0,
-      e: 'Ekdum! Recursion = khud ko call karna. Base case se rukta hai — warna infinite!'
-    },
-    {
-      q: '📺 print() / console.log() ka kya kaam hai?',
-      opts: ['Screen pe output dikhana', 'Variable store karna', 'Code delete karna', 'Loop shuru karna'],
-      correctIdx: 0,
-      e: 'Correct! print()/console.log() = terminal pe output dikhana. Developer ka debugging best friend!'
-    },
-    {
-      q: '📊 Big-O notation kya measure karta hai?',
-      opts: ['Algorithm ki time/space growth — input ke saath', 'Code ki total lines', 'Bug count', 'RAM capacity'],
-      correctIdx: 0,
-      e: 'Bilkul sahi! Big-O = algorithm ki growth rate. O(n) mein n=input size. Bada n, zyada time!'
-    },
-    {
-      q: '🔒 "const" / "final" kyun use karte hain?',
-      opts: ['Value constant rehti hai — change nahi hogi', 'Value baad mein change karte hain', 'Auto-delete ho jaata hai', 'Sirf numbers store karta hai'],
-      correctIdx: 0,
-      e: 'Sahi! const = lock ho gaya. Jaise Dhoni ka jersey number 7 — permanent!'
-    },
-    {
-      q: '💡 Variable kya hota hai?',
-      opts: ['Data store karne ka named container', 'Fixed number hamesha', 'Ek function type', 'Error message'],
-      correctIdx: 0,
-      e: 'Variable = dabba jisme data rakhte hain. Naam se access karo jab chahiye! 📦'
-    },
-    {
-      q: '🔍 O(1) complexity ka matlab kya hai?',
-      opts: ['Input size se bilkul fark nahi — always same speed', 'Input double = double time', 'Sirf ek loop hai', 'Input se directly fark padta hai'],
-      correctIdx: 0,
-      e: 'Perfect! O(1) = constant time. Array ka koi bhi element access karo — 1 element ho ya 1 crore, same speed!'
-    }
+  /* ── Code-specific questions (shown only when relevant) ── */
+  const codeSpecific = [
+    hasCls && { q: 'Class ka kya kaam hota hai programming mein?', opts: ['Blueprint banata hai — jaise ek mould se kai objects', 'Loop chalata hai', 'Variables delete karta hai', 'Code ko fast banata hai'], correctIdx: 0, e: 'Bilkul! Class = mould/blueprint. Jaise biryani recipe se kaafi plates!' },
+    hasCls && { q: 'Class se object kaise banate hain?', opts: ['ClassName() call karke — jaise Student("Rahul", 90)', 'Loop use karke', 'Import statement se', 'print() se'], correctIdx: 0, e: 'Sahi! ClassName() = constructor call. Object ban jaata hai!' },
+    hasNested && { q: 'Nested loops ki time complexity kya hogi?', opts: ['O(n2) — quadratic (bade data pe slow!)', 'O(1) — constant', 'O(n) — linear', 'O(log n) — logarithmic'], correctIdx: 0, e: 'Sahi! Nested loop = O(n2). 10x10=100 ops. Bade data pe bahut slow!' },
+    hasNested && { q: 'Nested loops ko optimize karne ka best tarika kya hai?', opts: ['Hash map / dictionary use karo — O(n) mein kaam hoga', 'Aur zyada loops add karo', 'Variables delete karo', 'Functions mat use karo'], correctIdx: 0, e: 'Ekdum sahi! Hash map se O(n2) ko O(n) mein reduce kar sakte ho!' },
+    hasLoop && { q: 'Loop tab tak kab chalta rehta hai?', opts: ['Jab tak condition true ho', 'Sirf ek baar', 'Randomly rukta hai', 'Jab condition false ho jaaye'], correctIdx: 0, e: 'Correct! Loop = condition true rahne tak repeat.' },
+    hasLoop && { q: 'for loop aur while loop mein kya fark hai?', opts: ['for = fixed iterations, while = condition-based', 'Dono bilkul same hain', 'for sirf numbers ke liye hai', 'while sirf strings ke liye hai'], correctIdx: 0, e: 'Sahi! for = pehle se pata kitni baar, while = condition check karo.' },
+    hasFn && { q: 'Function ka sabse bada fayda kya hai?', opts: ['Ek baar likho, baar baar use karo — reusability!', 'Code slow karta hai', 'Variables delete karta hai', 'Loop ki jagah use hota hai'], correctIdx: 0, e: 'Ekdum correct! Function = reusable recipe. Ek baar likhi, kitni baar bhi banao!' },
+    hasFn && { q: 'Function mein "return" statement ka kya kaam hai?', opts: ['Result wapas bhejta hai caller ko', 'Loop band karta hai', 'Variable delete karta hai', 'Error throw karta hai'], correctIdx: 0, e: 'Bilkul! return = kaam khatam, result wapas bhejo!' },
+    hasArr && { q: 'List mein .append() / .push() kya karta hai?', opts: ['Naya element end mein add karta hai', 'Pehla element remove karta hai', 'Array sort karta hai', 'Sab elements delete karta hai'], correctIdx: 0, e: 'Wah! .append()/.push() = line ke end mein join karna.' },
+    hasArr && { q: 'List ka pehla element access karne ke liye kya likhte hain?', opts: ['list[0] — index 0 se shuru hota hai', 'list[1] — pehla element', 'list[-1] — pehla element', 'list.first()'], correctIdx: 0, e: 'Sahi! Index 0 se shuru hota hai. list[0] = pehla element!' },
+    hasCond && { q: 'if-elif-else chain mein kya hota hai?', opts: ['Pehli match hone wali condition chalti hai, baaki skip', 'Sab conditions hamesha check hoti hain', 'Hamesha else chalega', 'Loop ban jaata hai'], correctIdx: 0, e: 'Sahi! Traffic signal — green (if), yellow (elif), red (else). First match pe ruk jao!' },
+    hasCond && { q: 'if ke andar == aur = mein kya fark hai?', opts: ['== comparison karta hai, = assignment karta hai', 'Dono same hain', '= comparison hai, == assignment hai', 'Dono sirf numbers ke liye hain'], correctIdx: 0, e: 'Bahut important! == = check karo equal hai ya nahi. = = value store karo.' },
+    hasRecur && { q: 'Recursion mein function kya karta hai?', opts: ['Khud ko hi call karta hai (self-call)', 'Doosre function ko call karta hai', 'Sirf iteration karta hai', 'Memory clear karta hai'], correctIdx: 0, e: 'Ekdum! Recursion = khud ko call karna. Base case se rukta hai.' },
+    hasRecur && { q: 'Recursion mein "base case" kyun zaroori hai?', opts: ['Warna infinite loop ho jaata hai — stack overflow!', 'Speed badhane ke liye', 'Memory save karne ke liye', 'Output print karne ke liye'], correctIdx: 0, e: 'Bilkul sahi! Base case nahi toh function kabhi nahi rukta — crash!' },
   ].filter(Boolean);
 
-  /* Shuffle pool, pick 5, then shuffle each question's options */
-  const shuffledPool = rawPool.sort(() => Math.random() - 0.5);
-  return shuffledPool.slice(0, 5).map(q => {
+  /* ── General CS questions (always available) — large pool for variety ── */
+  const general = [
+    { q: 'print() / console.log() ka kya kaam hai?', opts: ['Screen pe output dikhana', 'Variable store karna', 'Code delete karna', 'Loop shuru karna'], correctIdx: 0, e: 'Correct! Terminal pe output dikhana — developer ka best friend!' },
+    { q: 'Big-O notation kya measure karta hai?', opts: ['Algorithm ki time/space growth — input ke saath', 'Code ki total lines', 'Bug count', 'RAM capacity'], correctIdx: 0, e: 'Bilkul sahi! Big-O = algorithm ki growth rate. Bada input = zyada time.' },
+    { q: '"const" / "final" kyun use karte hain?', opts: ['Value constant rehti hai — change nahi hogi', 'Value baad mein change karte hain', 'Auto-delete ho jaata hai', 'Sirf numbers store karta hai'], correctIdx: 0, e: 'Sahi! const = lock ho gaya. Permanent value!' },
+    { q: 'Variable kya hota hai?', opts: ['Data store karne ka named container', 'Fixed number hamesha', 'Ek function type', 'Error message'], correctIdx: 0, e: 'Variable = dabba jisme data rakhte hain. Naam se access karo!' },
+    { q: 'O(1) complexity ka matlab kya hai?', opts: ['Input size se bilkul fark nahi — always same speed', 'Input double = double time', 'Sirf ek loop hai', 'Input se fark padta hai'], correctIdx: 0, e: 'Perfect! O(1) = constant time. 1 element ho ya 1 crore — same speed!' },
+    { q: 'O(n) complexity ka matlab kya hai?', opts: ['Input ke saath linearly badhta hai', 'Hamesha ek hi operation', 'Input square ke saath badhta hai', 'Logarithmic growth'], correctIdx: 0, e: 'Sahi! O(n) = linear. 10 items = 10 ops, 100 items = 100 ops.' },
+    { q: 'Array aur List mein kya common hai?', opts: ['Dono ordered sequence mein data store karte hain', 'Dono sirf numbers store karte hain', 'Dono mein length change nahi hoti', 'Dono same speed pe kaam karte hain'], correctIdx: 0, e: 'Bilkul! Ordered sequence — index se access karo.' },
+    { q: 'Bug kya hota hai code mein?', opts: ['Code mein galti jo unexpected behavior cause kare', 'Ek type ka insect', 'Memory unit', 'Function ka naam'], correctIdx: 0, e: 'Sahi! Bug = galti jisse program galat kaam kare ya crash ho.' },
+    { q: 'Comment (#, //) likhne ka kya fayda hai?', opts: ['Code explain karta hai — dusron ke liye (aur future self ke liye!)', 'Code faster banata hai', 'Variables delete karta hai', 'Errors hatata hai'], correctIdx: 0, e: 'Bilkul! Comments = notes. 6 mahine baad khud ko samjhne ke kaam aata hai!' },
+    { q: 'Compilation aur Interpretation mein kya fark hai?', opts: ['Compile = pehle pura translate, Interpret = line by line run', 'Dono same hain', 'Compile slow hai, Interpret fast hai', 'Sirf C++ compile hota hai'], correctIdx: 0, e: 'Sahi! Python = interpreted (line by line). C++ = compiled (pehle build karo).' },
+    { q: 'Kya hoga agar infinite loop mein break nahi hoga?', opts: ['Program hang/crash ho jaayega — infinite loop!', 'Program faster chalega', 'Memory kam use hogi', 'Output better hogi'], correctIdx: 0, e: 'Correct! Infinite loop = program kabhi nahi rukta. CPU 100% use hogi — crash!' },
+    { q: 'String kya hoti hai programming mein?', opts: ['Characters ka sequence — text data', 'Sirf numbers', 'Boolean value', 'Function type'], correctIdx: 0, e: 'Bilkul! String = text. "Hello", "Vivek", "123" — quotes mein likho.' },
+    { q: 'Boolean ka matlab kya hai?', opts: ['Sirf do values — True ya False', 'Numbers ka type', 'Text data', 'List ka type'], correctIdx: 0, e: 'Sahi! Boolean = True/False. Conditions aur logic ke liye use hota hai.' },
+    { q: 'Stack overflow error kab aata hai?', opts: ['Jab recursion ya function calls bahut deep ho jaaye', 'Jab variable bada ho', 'Jab loop zyada baar chale', 'Jab print zyada baar ho'], correctIdx: 0, e: 'Ekdum! Infinite recursion ya very deep function calls = stack overflow.' },
+    { q: 'DRY principle ka matlab kya hai?', opts: ["Don't Repeat Yourself — code duplicate mat karo", "Do Repeat Yourself", "Debug Run Yourself", "Delete Repeat Yield"], correctIdx: 0, e: 'Wah! DRY = Don\'t Repeat Yourself. Same code baar baar likhne se bachao — functions use karo!' },
+  ];
+
+  /* ── Merge, shuffle, pick 5 fresh every time ── */
+  const combined = [...codeSpecific, ...general].sort(() => Math.random() - 0.5);
+  const picked = combined.slice(0, 5);
+
+  return picked.map(q => {
     const { opts, c } = shuffleOpts(q.opts, q.correctIdx);
     return { q: q.q, opts, c, e: q.e };
   });
@@ -391,15 +388,19 @@ function resetQuiz(qs) {
   APP.quizState = { qs, cur: 0, score: 0, sel: null, answered: [], done: false };
 }
 
-/* ═══════════════════════════════════════════════════════
+/* ============================================================
    MODULE 4 — renderQuiz()
-═══════════════════════════════════════════════════════ */
+   ============================================================ */
 function renderQuiz() {
-  const body = document.getElementById('outBody');
+  const body = $('outBody');
+  if (!body) return;
   const qs = APP.quizState;
 
   if (!APP.hasExplained || !APP.quizData || !APP.quizData.length) {
-    body.innerHTML = `<div class="quiz-empty"><div class="icon">🧩</div><div style="font-weight:700;margin-bottom:5px;">Quiz ready nahi hai!</div><div style="font-size:12px">Pehle code explain karo — phir custom quiz milega! 🎯</div></div>`;
+    body.innerHTML =
+      '<div class="quiz-empty"><div class="icon">&#x1F9E9;</div>' +
+      '<div style="font-weight:700;margin-bottom:5px;">Quiz ready nahi hai!</div>' +
+      '<div style="font-size:12px">Pehle code explain karo — phir custom quiz milega!</div></div>';
     return;
   }
   if (qs.done) { renderQuizResult(); return; }
@@ -407,7 +408,9 @@ function renderQuiz() {
   const q = qs.qs[qs.cur];
   const letters = ['A', 'B', 'C', 'D'];
   const progress = (qs.cur / qs.qs.length) * 100;
-  const dotsHtml = qs.qs.map((_, i) => `<div class="q-dot ${i < qs.cur ? 'done' : i === qs.cur ? 'cur' : ''}"></div>`).join('');
+  const dotsHtml = qs.qs.map((_, i) =>
+    '<div class="q-dot ' + (i < qs.cur ? 'done' : i === qs.cur ? 'cur' : '') + '"></div>'
+  ).join('');
 
   const optsHtml = q.opts.map((o, i) => {
     let cls = 'q-opt';
@@ -415,64 +418,61 @@ function renderQuiz() {
       if (i === q.c) cls += ' correct';
       else if (i === qs.sel && i !== q.c) cls += ' wrong';
     }
-    return `<button class="${cls}" onclick="chooseOpt(${i})" ${qs.sel !== null ? 'disabled' : ''}>
-          <div class="q-letter">${letters[i]}</div>${escHtml(o)}
-        </button>`;
+    return '<button class="' + cls + '" onclick="chooseOpt(' + i + ')" ' + (qs.sel !== null ? 'disabled' : '') + '>' +
+      '<div class="q-letter">' + letters[i] + '</div>' + escHtml(o) + '</button>';
   }).join('');
 
   const feedbackHtml = qs.sel !== null
-    ? `<div class="q-feedback ${qs.sel === q.c ? 'c' : 'w'}">${qs.sel === q.c ? '✅ ' : '❌ '}${escHtml(q.e)}</div>` : '';
+    ? '<div class="q-feedback ' + (qs.sel === q.c ? 'c' : 'w') + '">' +
+    (qs.sel === q.c ? '&#x2705; ' : '&#x274C; ') + escHtml(q.e) + '</div>'
+    : '';
 
-  body.innerHTML = `
-      <div class="quiz-wrap quiz-slide">
-        <div class="q-prog-bar"><div class="q-prog-fill" style="width:${progress}%"></div></div>
-        <div class="quiz-top">
-          <div class="q-dots">${dotsHtml}</div>
-          <div class="q-score">Score: ${qs.score}/${qs.qs.length}</div>
-        </div>
-        <div class="q-num">Question ${qs.cur + 1} of ${qs.qs.length}</div>
-        <div class="q-question">${escHtml(q.q)}</div>
-        <div class="q-opts">${optsHtml}</div>
-        ${feedbackHtml}
-        ${qs.sel !== null ? `<div class="q-nav"><div class="q-hint">✨ Next question awaits!</div><button class="q-next" onclick="nextQ()">${qs.cur + 1 === qs.qs.length ? 'See Results 🏆' : 'Next →'}</button></div>` : ''}
-      </div>`;
+  body.innerHTML =
+    '<div class="quiz-wrap quiz-slide">' +
+    '<div class="q-prog-bar"><div class="q-prog-fill" style="width:' + progress + '%"></div></div>' +
+    '<div class="quiz-top"><div class="q-dots">' + dotsHtml + '</div>' +
+    '<div class="q-score">Score: ' + qs.score + '/' + qs.qs.length + '</div></div>' +
+    '<div class="q-num">Question ' + (qs.cur + 1) + ' of ' + qs.qs.length + '</div>' +
+    '<div class="q-question">' + escHtml(q.q) + '</div>' +
+    '<div class="q-opts">' + optsHtml + '</div>' + feedbackHtml +
+    (qs.sel !== null
+      ? '<div class="q-nav"><div class="q-hint">&#x2728; Next question awaits!</div>' +
+      '<button class="q-next" onclick="nextQ()">' +
+      (qs.cur + 1 === qs.qs.length ? 'See Results &#x1F3C6;' : 'Next &rarr;') + '</button></div>'
+      : '') +
+    '</div>';
 }
 
 function renderQuizResult() {
-  const body = document.getElementById('outBody');
+  const body = $('outBody');
+  if (!body) return;
   const qs = APP.quizState;
   const pct = Math.round((qs.score / qs.qs.length) * 100);
   const grade = pct >= 80 ? 'S' : pct >= 60 ? 'A' : pct >= 40 ? 'B' : 'C';
   const gradeColor = pct >= 80 ? 'var(--teal)' : pct >= 60 ? 'var(--orange)' : pct >= 40 ? '#fbbf24' : '#ef4444';
 
   const breakdownHTML = qs.qs.map((q, i) => {
-    const wasCorrect = qs.answered[i] === q.c;
-    return `<div class="q-result-item ${wasCorrect ? 'corr' : 'incorr'}">
-          <span>Q${i + 1}: ${escHtml(q.q.substring(0, 35))}...</span>
-          <span>${wasCorrect ? '✅ Correct' : '❌ Wrong'}</span>
-        </div>`;
+    const ok = qs.answered[i] === q.c;
+    return '<div class="q-result-item ' + (ok ? 'corr' : 'incorr') + '">' +
+      '<span>Q' + (i + 1) + ': ' + escHtml(q.q.substring(0, 35)) + '...</span>' +
+      '<span>' + (ok ? '&#x2705; Correct' : '&#x274C; Wrong') + '</span></div>';
   }).join('');
 
-  body.innerHTML = `
-      <div class="q-result quiz-slide">
-        <div class="q-result-emoji">${pct >= 80 ? '🏆' : pct >= 60 ? '🎯' : pct >= 40 ? '💪' : '📚'}</div>
-        <div class="q-result-title">${pct >= 80 ? 'Wah bhai wah! Master ho tum!' : pct >= 60 ? 'Achha kiya! Thoda aur practice!' : pct >= 40 ? 'Theek hai — phir se try karo!' : 'Koi baat nahi — explanation phir padho!'}</div>
-        <div class="q-result-score" style="color:${gradeColor};">${qs.score}/${qs.qs.length} <span style="font-size:20px;">Grade ${grade}</span></div>
-        <div style="background:rgba(255,255,255,.04);border-radius:8px;overflow:hidden;height:8px;width:200px;margin:8px auto;">
-          <div id="qResultBar" style="height:100%;width:0%;background:${gradeColor};border-radius:8px;transition:width 1s ease;"></div>
-        </div>
-        <div class="q-result-breakdown">${breakdownHTML}</div>
-        <div class="q-result-msg">${pct >= 80 ? 'Concept bilkul pakka! Aage badho! 🚀' : pct >= 60 ? 'Half way there! Explanation phir padho. 📖' : 'Concepts thode confusing hain — explanation phir padho! 💡'}</div>
-        <button class="q-retry" onclick="retryQuiz()">🔄 Phir Se Try Karo</button>
-      </div>`;
+  body.innerHTML =
+    '<div class="q-result quiz-slide">' +
+    '<div class="q-result-emoji">' + (pct >= 80 ? '&#x1F3C6;' : pct >= 60 ? '&#x1F3AF;' : pct >= 40 ? '&#x1F4AA;' : '&#x1F4DA;') + '</div>' +
+    '<div class="q-result-title">' + (pct >= 80 ? 'Wah bhai wah! Master ho tum!' : pct >= 60 ? 'Achha kiya! Thoda aur practice!' : pct >= 40 ? 'Theek hai — phir se try karo!' : 'Koi baat nahi — explanation phir padho!') + '</div>' +
+    '<div class="q-result-score" style="color:' + gradeColor + ';">' + qs.score + '/' + qs.qs.length +
+    ' <span style="font-size:20px;">Grade ' + grade + '</span></div>' +
+    '<div style="background:rgba(255,255,255,.04);border-radius:8px;overflow:hidden;height:8px;width:200px;margin:8px auto;">' +
+    '<div id="qResultBar" style="height:100%;width:0%;background:' + gradeColor + ';border-radius:8px;transition:width 1s ease;"></div></div>' +
+    '<div class="q-result-breakdown">' + breakdownHTML + '</div>' +
+    '<div class="q-result-msg">' + (pct >= 80 ? 'Concept bilkul pakka! Aage badho!' : pct >= 60 ? 'Half way there! Explanation phir padho.' : 'Concepts thode confusing hain — explanation phir padho!') + '</div>' +
+    '<button class="q-retry" onclick="retryQuiz()">&#x1F504; Phir Se Try Karo</button></div>';
 
-  setTimeout(() => {
-    const bar = document.getElementById('qResultBar');
-    if (bar) bar.style.width = pct + '%';
-  }, 80);
+  setTimeout(() => { const b = $('qResultBar'); if (b) b.style.width = pct + '%'; }, 80);
 }
 
-/* Guard: prevent double-fire if user clicks twice */
 function chooseOpt(i) {
   const qs = APP.quizState;
   if (qs.sel !== null) return;
@@ -486,297 +486,501 @@ function nextQ() {
   const qs = APP.quizState;
   const wrap = document.querySelector('.quiz-wrap');
   const advance = () => {
-    qs.sel = null;
-    qs.cur++;
+    qs.sel = null; qs.cur++;
     if (qs.cur >= qs.qs.length) qs.done = true;
     renderQuiz();
     const nw = document.querySelector('.quiz-wrap, .q-result');
     if (nw) {
-      nw.style.opacity = '0';
-      nw.style.transform = 'translateX(18px)';
+      nw.style.opacity = '0'; nw.style.transform = 'translateX(18px)';
       requestAnimationFrame(() => {
         nw.style.transition = 'opacity .22s ease, transform .22s ease';
-        nw.style.opacity = '1';
-        nw.style.transform = 'translateX(0)';
+        nw.style.opacity = '1'; nw.style.transform = 'translateX(0)';
       });
     }
   };
   if (wrap) {
     wrap.style.transition = 'opacity .18s ease, transform .18s ease';
-    wrap.style.opacity = '0';
-    wrap.style.transform = 'translateX(-18px)';
+    wrap.style.opacity = '0'; wrap.style.transform = 'translateX(-18px)';
     setTimeout(advance, 180);
-  } else {
-    advance();
-  }
+  } else { advance(); }
 }
 
 function retryQuiz() {
+  /* Fresh shuffle every retry — nayi questions milegi! */
+  const code = $("codeInput") ? $("codeInput").value.trim() : "";
+  if (code) APP.quizData = buildQuiz(code);
   resetQuiz(APP.quizData);
   renderQuiz();
 }
 
-/* ═══════════════════════════════════════════════════════
-   MODULE 5 — simulateOutput()
-═══════════════════════════════════════════════════════ */
-function simulateOutput(code) {
+/* ============================================================
+   MODULE 5 — INTERACTIVE CODE RUNNER
+   Detects input() calls, shows popup, then simulates output
+   ============================================================ */
+
+/* ── Step 1: Detect all input() prompts in code ── */
+function detectInputCalls(code) {
+  const inputs = [];
   const lines = code.split('\n');
-  const outputs = [];
 
-  lines.forEach(line => {
-    const t = line.trim();
-    const fmtMatch = t.match(/print\s*\(\s*['"`](.+?)['"`]\s*%\s*\((.+)\)\s*\)/);
-    const fstrMatch = t.match(/print\s*\(\s*f['"`](.+?)['"`]\s*\)/);
-    const printMatch = t.match(/print\s*\(\s*['"`]?([^'"`\)]+)['"`]?\s*\)/);
-    const logMatch = t.match(/console\.log\s*\((.+)\)/);
-    const sysMatch = t.match(/System\.out\.(?:println|print)\s*\((.+)\)/);
-    const coutMatch = t.match(/cout\s*<<\s*(.+?)\s*(?:;|<<\s*endl|<<\s*"\\n")/);
+  // ── Java Scanner: detect print prompt + nextXxx() pattern ──
+  // Strategy: find System.out.print("...") followed by scanner.nextInt/next/nextLine etc.
+  const isJava = /import\s+java\.util\.Scanner|Scanner\s+\w+\s*=\s*new\s+Scanner/i.test(code);
+  if (isJava) {
+    // Find the scanner variable name
+    const scannerVarMatch = code.match(/Scanner\s+(\w+)\s*=\s*new\s+Scanner/);
+    const scanVar = scannerVarMatch ? scannerVarMatch[1] : 'input';
 
-    if (fmtMatch) {
-      let s = fmtMatch[1];
-      const vals = fmtMatch[2].split(',').map(v => v.trim());
-      let vi = 0;
-      s = s.replace(/%[\d.]*[dfsf]/g, () => {
-        const v = vals[vi++] || '?';
-        const vm = new RegExp(v + '\\s*=\\s*([\\d.]+)').exec(code);
-        return vm ? parseFloat(vm[1]).toFixed(2) : v;
-      });
-      outputs.push(s);
-    } else if (fstrMatch) {
-      let s = fstrMatch[1].replace(/\{([^}]+)\}/g, (_, expr) => {
-        const vm = new RegExp(expr.trim() + '\\s*=\\s*([\\d.]+|["\'].*?["\'])').exec(code);
-        return vm ? vm[1].replace(/['"]/g, '') : expr;
-      });
-      outputs.push(s);
-    } else if (printMatch && !t.includes('f"') && !t.includes("f'")) {
-      let raw = printMatch[1].trim();
-      if (/^['"`].*['"`]$/.test(raw)) {
-        outputs.push(raw.replace(/^['"`]|['"`]$/g, ''));
-      } else {
-        const vd = new RegExp(raw + '\\s*=\\s*([\\d.]+|["\'].*?["\'])').exec(code);
-        outputs.push(vd ? vd[1].replace(/['"]/g, '') : `<${raw}>`);
+    // Find all variable assignments using scanner.nextXxx()
+    lines.forEach((line, idx) => {
+      const t = line.trim();
+      // Match: int num1 = input.nextInt(); OR String s = input.next();
+      const nextMatch = t.match(new RegExp(
+        '(?:int|long|double|float|String|char)?\\s*(\\w+)\\s*=\\s*' +
+        scanVar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+        '\\.next(?:Int|Double|Long|Float|Line|\\(\\))\\s*\\(\\s*\\)'
+      ));
+      if (nextMatch) {
+        const varName = nextMatch[1];
+        // Look for the print prompt just before this line
+        let promptText = 'Enter value for ' + varName;
+        for (let j = idx - 1; j >= Math.max(0, idx - 3); j--) {
+          const prevLine = lines[j].trim();
+          const printMatch = prevLine.match(/System\.out\.print\s*\(\s*["\'`]([^"\'`]+)["\'`]\s*\)/);
+          if (printMatch) { promptText = printMatch[1]; break; }
+        }
+        inputs.push({ varName, prompt: promptText, lineIdx: idx, raw: t });
       }
-    } else if (logMatch) {
-      outputs.push(logMatch[1].trim().replace(/^['"`]|['"`]$/g, ''));
-    } else if (sysMatch) {
-      outputs.push(sysMatch[1].trim().replace(/^["']|["']$/g, ''));
-    } else if (coutMatch) {
-      outputs.push(coutMatch[1].trim().replace(/^["']|["']$/g, ''));
-    }
+    });
+    if (inputs.length) return inputs;
+  }
+
+  // ── C++ cin: detect cin >> varName ──
+  const isCpp = /cin\s*>>/.test(code);
+  if (isCpp) {
+    lines.forEach((line, idx) => {
+      const t = line.trim();
+      const cinMatch = t.match(/cin\s*>>\s*(\w+)/);
+      if (cinMatch) {
+        const varName = cinMatch[1];
+        let promptText = 'Enter value for ' + varName;
+        for (let j = idx - 1; j >= Math.max(0, idx - 3); j--) {
+          const prevLine = lines[j].trim();
+          const coutMatch = prevLine.match(/cout\s*<<\s*["\'`]([^"\'`]+)["\'`]/);
+          if (coutMatch) { promptText = coutMatch[1]; break; }
+        }
+        inputs.push({ varName, prompt: promptText, lineIdx: idx, raw: t });
+      }
+    });
+    if (inputs.length) return inputs;
+  }
+
+  // ── Python: name = input("Enter name: ") ──
+  // ── JS: let name = prompt("Enter name") ──
+  lines.forEach((line, idx) => {
+    const pyMatch = line.match(/(?:^|\s)(\w+)\s*=\s*(?:int|float|str)?\s*\(?\s*input\s*\(\s*["\'\`]?([^"\'\`\)]*)["\'\`]?\s*\)\s*\)?/);
+    const jsMatch = line.match(/(?:let|const|var)?\s*(\w+)\s*=\s*prompt\s*\(\s*["\'\`]?([^"\'\`\)]*)["\'\`]?\s*\)/);
+    if (pyMatch) inputs.push({ varName: pyMatch[1], prompt: pyMatch[2] || ('Value for ' + pyMatch[1]), lineIdx: idx, raw: line.trim() });
+    else if (jsMatch) inputs.push({ varName: jsMatch[1], prompt: jsMatch[2] || ('Value for ' + jsMatch[1]), lineIdx: idx, raw: line.trim() });
+  });
+  return inputs;
+}
+
+
+
+/* ── Step 3: Show input modal if needed, else run directly ── */
+function runCode() {
+  const ci = $('codeInput');
+  if (!ci || !ci.value.trim()) { toast('Pehle code paste karo!'); return; }
+  const code = ci.value.trim();
+  const inputs = detectInputCalls(code);
+
+  if (inputs.length > 0) {
+    showInputModal(code, inputs);
+  } else {
+    // No inputs — call AI directly
+    runWithAI(code, {});
+  }
+}
+
+/* ── Step 4: Input Modal UI ── */
+function showInputModal(code, inputs) {
+  // Remove existing modal if any
+  const existing = document.getElementById('inputModal');
+  if (existing) existing.remove();
+
+  const fieldsHTML = inputs.map((inp, i) =>
+    '<div style="margin-bottom:14px;">' +
+    '<label style="display:block;font-size:12px;font-weight:700;color:var(--teal);margin-bottom:6px;letter-spacing:.5px;">' +
+    '&#x1F4E5; ' + escHtml(inp.prompt || inp.varName) + '</label>' +
+    '<div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-family:monospace;">' + escHtml(inp.raw) + '</div>' +
+    '<input id="inp_' + i + '" type="text" placeholder="Value daalo..." ' +
+    'style="width:100%;box-sizing:border-box;background:#1a1a2e;border:1.5px solid var(--border);border-radius:8px;' +
+    'padding:10px 12px;color:#f1efff;font-size:14px;outline:none;font-family:monospace;" ' +
+    'onkeydown="if(event.key===\x27Enter\x27){document.getElementById(\x27runWithInputsBtn\x27).click();}" />' +
+    '</div>'
+  ).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'inputModal';
+  modal.style.cssText =
+    'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);' +
+    'display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML =
+    '<div style="background:#13131f;border:1.5px solid var(--border);border-radius:16px;' +
+    'padding:24px;width:100%;max-width:420px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">' +
+    '<div style="font-size:16px;font-weight:800;color:#f1efff;">&#x2328;&#xFE0F; Input Values Do</div>' +
+    '<button onclick="document.getElementById(\x27inputModal\x27).remove()" ' +
+    'style="background:rgba(255,255,255,.07);border:none;color:var(--muted);border-radius:8px;' +
+    'padding:4px 10px;cursor:pointer;font-size:16px;">&times;</button></div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:16px;padding:8px 12px;' +
+    'background:rgba(255,107,53,.07);border-radius:8px;border:1px solid rgba(255,107,53,.2);">' +
+    '&#x26A1; Tumhara code <strong style="color:var(--orange);">' + inputs.length + ' input()</strong> use kar raha hai — values daalo!</div>' +
+    fieldsHTML +
+    '<div style="display:flex;gap:10px;margin-top:6px;">' +
+    '<button id="runWithInputsBtn" onclick="runWithInputs()" ' +
+    'style="flex:1;padding:12px;background:linear-gradient(135deg,#ff6b35,#f7931e);' +
+    'color:white;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;">&#x25B6;&#xFE0F; Run Karo</button>' +
+    '<button onclick="document.getElementById(\x27inputModal\x27).remove()" ' +
+    'style="padding:12px 16px;background:rgba(255,255,255,.06);color:var(--muted);' +
+    'border:1px solid var(--border);border-radius:10px;font-size:13px;cursor:pointer;">Cancel</button>' +
+    '</div></div>';
+
+  document.body.appendChild(modal);
+  // Focus first input
+  setTimeout(() => { const fi = document.getElementById('inp_0'); if (fi) fi.focus(); }, 100);
+
+  // Store code + inputs for runWithInputs()
+  modal._code = code;
+  modal._inputs = inputs;
+}
+
+/* ── Step 5: Collect inputs and call AI ── */
+function runWithInputs() {
+  const modal = document.getElementById('inputModal');
+  if (!modal) return;
+  const code = modal._code;
+  const inputs = modal._inputs;
+
+  const userInputs = {};
+  inputs.forEach((inp, i) => {
+    const el = document.getElementById('inp_' + i);
+    const raw = el ? el.value.trim() : '';
+    userInputs[inp.varName] = (raw !== '' && !isNaN(raw)) ? Number(raw) : raw;
   });
 
-  /* Range loop with print */
-  const rangeLoop = code.match(/for\s+(\w+)\s+in\s+range\s*\((\d+)(?:,\s*(\d+))?\)/);
-  const loopPrint = code.match(/for[\s\S]{0,80}print\s*\(\s*(\w+)\s*\)/);
-  if (rangeLoop && loopPrint && outputs.length === 0) {
-    const start = rangeLoop[3] ? parseInt(rangeLoop[2]) : 0;
-    const end = rangeLoop[3] ? parseInt(rangeLoop[3]) : parseInt(rangeLoop[2]);
-    for (let i = start; i < Math.min(end, 20); i++) outputs.push(String(i));
-    if (end > 20) outputs.push('...(truncated)');
-  }
-  /* Sort output */
-  if (/print\s*\(\s*(?:bubble_sort|sorted|sort)\s*\(/.test(code) && outputs.length === 0)
-    outputs.push('[12, 22, 25, 34, 64]');
-  if (code.includes('print(s.grade())') && outputs.length === 0) outputs.push('B');
-  if (code.includes('greet(') && code.includes('result') && outputs.length === 0)
-    outputs.push('Hello, Vivek!');
+  modal.remove();
+  runWithAI(code, userInputs);
+}
 
+/* ── Step 5b: AI-powered code execution call ── */
+async function runWithAI(code, userInputs) {
+  const lang = APP.langPill || 'auto';
+
+  // Show Output tab immediately with loading state
+  switchTab('run');
+  const ob = $('outBody');
+  if (ob) {
+    ob.innerHTML =
+      '<div class="placeholder-state">' +
+      '<div style="font-size:36px;animation:spin .8s linear infinite;display:inline-block;">&#x26A1;</div>' +
+      '<h3>AI Code Chal Raha Hai...</h3>' +
+      '<p>Amazon Nova compute kar raha hai output...</p></div>';
+  }
+
+
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), API_TIMEOUT);
+
+    const resp = await fetch(RUN_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({ code, language: lang, userInputs })
+    });
+    clearTimeout(tid);
+
+    if (!resp.ok) throw new Error('API ' + resp.status);
+    const data = await resp.json();
+
+    // Parse AI output into lines
+    const aiOutputLines = data.output
+      ? data.output.split('\n').filter(l => l.trim() !== '')
+      : ['(no output)'];
+
+    // Save for PDF export
+    APP.runOutputLines = aiOutputLines;
+    APP.runInputs = userInputs;
+    APP.runWasAI = true;
+
+    showOutputPanel(code, aiOutputLines, userInputs, true);
+
+  } catch (err) {
+    console.warn('AI run failed:', err.message);
+    const outputs = ['(AI failed to run code: ' + err.message + ')'];
+    APP.runOutputLines = outputs;
+    APP.runInputs = userInputs;
+    APP.runWasAI = false;
+    showOutputPanel(code, outputs, userInputs, false);
+  }
+}
+
+/* ── Step 6: Show output in the dedicated Output tab ── */
+function showOutputPanel(code, outputs, userInputs, isAI) {
+  const inputSummaryHTML = Object.keys(userInputs).length
+    ? '<div style="margin-bottom:16px;padding:12px 14px;background:rgba(6,214,160,.06);border:1px solid rgba(6,214,160,.2);border-radius:10px;">' +
+    '<div style="font-size:10px;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">&#x1F4E5; Tumhare Input Values</div>' +
+    Object.entries(userInputs).map(([k, v]) =>
+      '<div style="font-family:monospace;font-size:12.5px;color:#c4b5fd;margin-bottom:4px;">' +
+      '<span style="color:var(--orange);">' + escHtml(k) + '</span>' +
+      ' <span style="color:var(--muted);">= </span>' +
+      '<span style="color:var(--teal);">&quot;' + escHtml(String(v)) + '&quot;</span></div>'
+    ).join('') + '</div>'
+    : '';
+
+  const outputLines = outputs.map(line =>
+    '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);">' +
+    '<span style="color:var(--teal);font-weight:700;flex-shrink:0;">&#x25B6;</span>' +
+    '<span style="color:#e8f5e9;font-family:monospace;font-size:13px;line-height:1.7;word-break:break-all;">' + escHtml(line) + '</span>' +
+    '</div>'
+  ).join('');
+
+  // AI badge or simulated badge
+  const badgeHTML = isAI
+    ? '<div style="margin-top:12px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--teal);">' +
+    '<span style="background:rgba(6,214,160,.12);border:1px solid rgba(6,214,160,.3);border-radius:6px;padding:3px 8px;font-weight:700;">&#x1F916; Amazon Nova AI</span>' +
+    '<span style="color:var(--muted);">se generate hua actual output</span></div>'
+    : '<div style="margin-top:10px;font-size:11px;color:var(--muted);text-align:center;">&#x2139;&#xFE0F; Simulated output — AI unavailable tha</div>';
+
+  // Build the full Output tab content
+  const html =
+    '<div style="padding:4px 2px;">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+    '<div style="font-size:13px;font-weight:800;color:var(--teal);">&#x1F4BB; Live Output</div>' +
+    '<button onclick="reRunCode()" style="font-size:11px;padding:5px 12px;background:rgba(6,214,160,.12);' +
+    'border:1px solid rgba(6,214,160,.3);color:var(--teal);border-radius:8px;cursor:pointer;font-weight:700;">&#x1F504; Dobara Run</button>' +
+    '</div>' +
+    inputSummaryHTML +
+    '<div style="background:#0a0a12;border:1px solid var(--border);border-radius:10px;padding:14px 16px;">' +
+    '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:12px;">$ output</div>' +
+    outputLines +
+    '</div>' +
+    badgeHTML +
+    '</div>';
+
+  // Store and switch to run tab
+  APP.runOutputHTML = html;
+  switchTab('run');
+  // Always show action buttons (PDF, Debug, Share) after output
+  const oa = $('outActions');
+  if (oa) oa.style.display = '';
+  toast('&#x2705; Output ready!');
+}
+
+/* ── Re-run: bring up input modal again ── */
+function reRunCode() {
+  const ci = $('codeInput');
+  if (!ci || !ci.value.trim()) { toast('Pehle code paste karo!'); return; }
+  runCode();
+}
+
+/* ── Legacy simulateOutput (kept for internal use) ── */
+function simulateOutput(code) {
+  const outputs = simulateOutputWithInputs(code, {});
   return { outputs, language: APP.langPill };
 }
 
-/* ═══════════════════════════════════════════════════════
+/* ============================================================
    MODULE 6 — analyzeDebug() + debugCode() + renderDebugResult()
-═══════════════════════════════════════════════════════ */
+   ============================================================ */
 function analyzeDebug(code) {
-  const lines = code.split('\n');
-  const lang = APP.langPill;
+  const lines = code.split('\n'), lang = APP.langPill;
   const bugs = [], warnings = [], fixes = [];
 
   lines.forEach((line, idx) => {
-    const t = line.trim();
-    const lineNum = idx + 1;
+    const t = line.trim(), lineNum = idx + 1;
 
     if (lang === 'Python' || lang === 'Auto Detect') {
-      /* Missing colon */
-      if (/^\s*(def|class|for|while|if|elif|else|try|except|finally|with)\b/.test(line)
-        && !/:[\s]*$/.test(t) && !/:[\s]*#/.test(t) && t.length > 0) {
-        bugs.push({ line: lineNum, code: t, type: 'Syntax', desc: `Line ${lineNum}: Colon missing — <code>${escHtml(t)}</code> ke end mein <strong>":"</strong> chahiye.` });
+      if (/^\s*(def|class|for|while|if|elif|else|try|except|finally|with)\b/.test(line) && !/:[\s]*$/.test(t) && !/:[\s]*#/.test(t) && t.length > 0) {
+        bugs.push({ line: lineNum, code: t, type: 'Syntax', desc: 'Line ' + lineNum + ': Colon missing — ' + escHtml(t) + ' ke end mein ":" chahiye.' });
         fixes.push({ line: lineNum, original: t, fixed: t + ':', desc: 'Colon add karo end mein' });
       }
-      /* Assignment in if */
       if (/\bif\s+\w+\s*=\s*[^=]/.test(t)) {
-        bugs.push({ line: lineNum, code: t, type: 'Logic', desc: `Line ${lineNum}: Assignment <code>=</code> inside <code>if</code>! Comparison ke liye <strong>==</strong> use karo.` });
+        bugs.push({ line: lineNum, code: t, type: 'Logic', desc: 'Line ' + lineNum + ': Assignment = inside if! Comparison ke liye == use karo.' });
         fixes.push({ line: lineNum, original: t, fixed: t.replace(/(\bif\s+\w+)\s*=\s*/, '$1 == '), desc: '= ko == se replace karo' });
       }
-      /* print without parens */
       if (/^\s*print\s+[^(]/.test(line)) {
-        bugs.push({ line: lineNum, code: t, type: 'Syntax', desc: `Line ${lineNum}: Python 3 mein <code>print</code> ke baad parentheses <strong>()</strong> zaroori hain!` });
+        bugs.push({ line: lineNum, code: t, type: 'Syntax', desc: 'Line ' + lineNum + ': Python 3 mein print ke baad parentheses () zaroori hain!' });
         fixes.push({ line: lineNum, original: t, fixed: t.replace(/^print\s+/, 'print(') + ')', desc: 'print() parentheses add karo' });
       }
-      /* Tab+space mix */
-      if (/^\t/.test(line) && code.includes('    ')) {
-        warnings.push({ type: 'Style', desc: `Line ${lineNum}: Tab aur spaces mixed! Python mein consistency zaroori hai.`, severity: 'medium' });
-      }
-      /* Unused variable */
-      const varDecl = t.match(/^(\w+)\s*=/);
-      if (varDecl && !['self', '_', 'True', 'False', 'None'].includes(varDecl[1])) {
-        const vn = varDecl[1];
-        const usedElsewhere = lines.some((l, i) => i !== idx && new RegExp('\\b' + vn + '\\b').test(l));
-        if (!usedElsewhere && !/^(for|while|if|class|def)/.test(t))
-          warnings.push({ type: 'Warning', desc: `Line ${lineNum}: Variable <code>${escHtml(vn)}</code> define kiya lekin kabhi use nahi kiya — dead code?`, severity: 'low' });
+      if (/^\t/.test(line) && code.includes('    '))
+        warnings.push({ type: 'Style', desc: 'Line ' + lineNum + ': Tab aur spaces mixed! Python mein consistency zaroori hai.', severity: 'medium' });
+      const vd = t.match(/^(\w+)\s*=/);
+      if (vd && !['self', '_', 'True', 'False', 'None'].includes(vd[1])) {
+        const vn = vd[1];
+        if (!lines.some((l, i) => i !== idx && new RegExp('\\b' + vn + '\\b').test(l)) && !/^(for|while|if|class|def)/.test(t))
+          warnings.push({ type: 'Warning', desc: 'Line ' + lineNum + ': Variable ' + escHtml(vn) + ' define kiya lekin kabhi use nahi kiya — dead code?', severity: 'low' });
       }
     }
-
     if (lang === 'JavaScript' || lang === 'Auto Detect') {
-      if (/\bvar\b/.test(t))
-        warnings.push({ type: 'Style', desc: `Line ${lineNum}: <code>var</code> avoid karo — <strong>const</strong> ya <strong>let</strong> use karo.`, severity: 'medium' });
-      if (/==\s/.test(t) && !/===/.test(t))
-        warnings.push({ type: 'Logic', desc: `Line ${lineNum}: <code>==</code> ki jagah <code>===</code> use karo — loose equality causes bugs.`, severity: 'medium' });
-      if (/console\.log\(/.test(t))
-        warnings.push({ type: 'Style', desc: `Line ${lineNum}: <code>console.log</code> production mein remove karna mat bhoolna!`, severity: 'low' });
+      if (/\bvar\b/.test(t)) warnings.push({ type: 'Style', desc: 'Line ' + lineNum + ': var avoid karo — const ya let use karo.', severity: 'medium' });
+      if (/==\s/.test(t) && !/===/.test(t)) warnings.push({ type: 'Logic', desc: 'Line ' + lineNum + ': == ki jagah === use karo.', severity: 'medium' });
+      if (/console\.log\(/.test(t)) warnings.push({ type: 'Style', desc: 'Line ' + lineNum + ': console.log production mein remove karna mat bhoolna!', severity: 'low' });
     }
-
-    /* General */
-    if (t.length > 120)
-      warnings.push({ type: 'Style', desc: `Line ${lineNum}: Bahut lambi line (${t.length} chars). 80-100 se neeche rakhne ki koshish karo.`, severity: 'low' });
-    if (/\/\s*0\b/.test(t))
-      bugs.push({ line: lineNum, code: t, type: 'Runtime', desc: `Line ${lineNum}: Zero se divide! ZeroDivisionError aa sakta hai.` });
+    if (t.length > 120) warnings.push({ type: 'Style', desc: 'Line ' + lineNum + ': Bahut lambi line (' + t.length + ' chars).', severity: 'low' });
+    if (/\/\s*0\b/.test(t)) bugs.push({ line: lineNum, code: t, type: 'Runtime', desc: 'Line ' + lineNum + ': Zero se divide! ZeroDivisionError aa sakta hai.' });
     if (/while\s+(True|1|true)\s*:/.test(t) && !code.includes('break'))
-      bugs.push({ line: lineNum, code: t, type: 'Logic', desc: `Line ${lineNum}: <strong>Infinite loop risk!</strong> while True hai lekin break nahi mila!` });
+      bugs.push({ line: lineNum, code: t, type: 'Logic', desc: 'Line ' + lineNum + ': Infinite loop risk! break statement nahi mila!' });
   });
 
-  /* Duplicate lines */
-  const nonEmpty = lines.filter(l => l.trim().length > 5);
-  const seen = new Set(), dups = [];
-  nonEmpty.forEach(l => { if (seen.has(l.trim())) dups.push(l.trim()); else seen.add(l.trim()); });
-  if (dups.length > 0)
-    warnings.push({ type: 'Style', desc: `Duplicate code: <code>${escHtml(dups[0].substring(0, 50))}</code> — function mein extract karo!`, severity: 'low' });
-
-  /* Nested loops performance warning */
-  if (/(for|while)[\s\S]{1,300}(for|while)/i.test(code))
-    warnings.push({ type: 'Performance', desc: 'Nested loops detected — O(n²). Large data pe slow. Hash map consider karo.', severity: 'high' });
+  const ne = lines.filter(l => l.trim().length > 5), seen = new Set(), dups = [];
+  ne.forEach(l => { if (seen.has(l.trim())) dups.push(l.trim()); else seen.add(l.trim()); });
+  if (dups.length) warnings.push({ type: 'Style', desc: 'Duplicate code: ' + escHtml(dups[0].substring(0, 50)) + ' — function mein extract karo!', severity: 'low' });
+  if (/(for|while)[\s\S]{1,300}(for|while)/i.test(code)) warnings.push({ type: 'Performance', desc: 'Nested loops detected — O(n2). Large data pe slow. Hash map consider karo.', severity: 'high' });
 
   return { bugs, warnings, fixes };
 }
 
 function debugCode() {
-  if (!APP.hasExplained) { toast('⚠️ Pehle explain karo — phir debug!'); return; }
-  const code = document.getElementById('codeInput').value.trim();
-  if (!code) { toast('⚠️ Code missing!'); return; }
-
-  const btn = document.getElementById('debugBtn');
-  btn.classList.add('loading-debug');
-  btn.innerHTML = `<svg class="btn-icon-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2a2 2 0 0 0-2 2v1H2M10 2a2 2 0 0 1 2 2v1h2M4 8H2M14 8h-2M4 12H2M14 12h-2M6 14a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H6z"/></svg>Checking...`;
-
+  if (!APP.hasExplained) { toast('Pehle explain karo — phir debug!'); return; }
+  const ci = $('codeInput');
+  if (!ci || !ci.value.trim()) { toast('Code missing!'); return; }
+  const btn = $('debugBtn');
+  if (btn) { btn.classList.add('loading-debug'); btn.textContent = 'Checking...'; }
   setTimeout(() => {
-    APP.debugData = analyzeDebug(document.getElementById('codeInput').value.trim());
+    APP.debugData = analyzeDebug(ci.value.trim());
     switchTab('debug');
-    btn.classList.remove('loading-debug');
-    btn.innerHTML = `<svg class="btn-icon-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2a2 2 0 0 0-2 2v1H2M10 2a2 2 0 0 1 2 2v1h2M4 8H2M14 8h-2M4 12H2M14 12h-2M6 14a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H6z"/></svg>Debug`;
+    if (btn) { btn.classList.remove('loading-debug'); btn.textContent = 'Debug'; }
     const total = APP.debugData.bugs.length + APP.debugData.warnings.length;
-    toast(total === 0 ? '✅ Code clean dikh raha hai!' : `🐛 ${APP.debugData.bugs.length} bug(s) found — Debug tab check karo!`);
+    toast(total === 0 ? 'Code clean dikh raha hai!' : APP.debugData.bugs.length + ' bug(s) found — Debug tab check karo!');
   }, 800);
 }
 
 function renderDebugResult() {
-  const body = document.getElementById('outBody');
+  const body = $('outBody');
+  if (!body) return;
   if (!APP.debugData) {
-    body.innerHTML = `<div class="placeholder-state"><div class="icon">🐛</div><h3>Debug Analysis Nahi Hai!</h3><p>"Debug" button dabao — code mein gadbad dhundho!</p></div>`;
+    body.innerHTML = '<div class="placeholder-state"><div class="icon">&#x1F41B;</div><h3>Debug Analysis Nahi Hai!</h3><p>"Debug" button dabao!</p></div>';
     return;
   }
   const { bugs, warnings, fixes } = APP.debugData;
-  const total = bugs.length + warnings.length;
-
-  if (total === 0) {
-    body.innerHTML = `
-        <div class="debug-wrap">
-          <div class="debug-clean">
-            <div class="debug-clean-icon">✅</div>
-            <div class="debug-clean-title">Code Clean Dikh Raha Hai!</div>
-            <div class="debug-clean-msg">Koi obvious bugs ya issues nahi mila. Type hints, docstrings, aur unit tests add karo production ke liye.<br><br><em style="color:var(--muted2);">Note: Yeh static analysis hai — runtime errors ke liye actual execution karo.</em></div>
-          </div>
-        </div>`;
+  if (!bugs.length && !warnings.length) {
+    body.innerHTML =
+      '<div class="debug-wrap"><div class="debug-clean"><div class="debug-clean-icon">&#x2705;</div>' +
+      '<div class="debug-clean-title">Code Clean Dikh Raha Hai!</div>' +
+      '<div class="debug-clean-msg">Koi obvious bugs ya issues nahi mila.<br><em style="color:var(--muted2);">Yeh static analysis hai — runtime errors ke liye terminal mein run karo.</em></div>' +
+      '</div></div>';
     return;
   }
+  const bugsHTML = bugs.map(b =>
+    '<div class="bug-card"><div class="bug-card-top"><span class="bug-line-badge">Line ' + b.line + '</span>' +
+    '<span class="bug-type">&#x1F534; ' + b.type + ' Error</span></div>' +
+    '<div class="bug-desc">' + b.desc + '</div>' +
+    (b.code ? '<div class="bug-code-orig">&#x274C; &nbsp;' + escHtml(b.code.substring(0, 80)) + '</div>' : '') + '</div>'
+  ).join('');
+  const fixesHTML = fixes.map(f =>
+    '<div class="bug-fix-card"><div class="bug-fix-title">&#x2705; Fix — Line ' + f.line + ': ' + f.desc + '</div>' +
+    '<div class="bug-code-orig">&#x274C; &nbsp;' + escHtml(f.original.substring(0, 80)) + '</div>' +
+    '<div class="bug-fix-code">&#x2705; &nbsp;' + escHtml(f.fixed.substring(0, 80)) + '</div></div>'
+  ).join('');
+  const warnsHTML = warnings.map(w =>
+    '<div class="warn-card">' +
+    '<div class="warn-card-icon">' + (w.severity === 'high' ? '&#x1F534;' : w.severity === 'medium' ? '&#x1F7E1;' : '&#x1F535;') + '</div>' +
+    '<div class="warn-card-text"><strong>' + w.type + ':</strong> ' + w.desc + '</div></div>'
+  ).join('');
 
-  const bugsHTML = bugs.map(b => `
-        <div class="bug-card">
-          <div class="bug-card-top"><span class="bug-line-badge">Line ${b.line}</span><span class="bug-type">🔴 ${b.type} Error</span></div>
-          <div class="bug-desc">${b.desc}</div>
-          ${b.code ? `<div class="bug-code-orig">❌ &nbsp;${escHtml(b.code.substring(0, 80))}</div>` : ''}
-        </div>`).join('');
-
-  const fixesHTML = fixes.map(f => `
-        <div class="bug-fix-card">
-          <div class="bug-fix-title">✅ Fix — Line ${f.line}: ${f.desc}</div>
-          <div class="bug-code-orig">❌ &nbsp;${escHtml(f.original.substring(0, 80))}</div>
-          <div class="bug-fix-code">✅ &nbsp;${escHtml(f.fixed.substring(0, 80))}</div>
-        </div>`).join('');
-
-  const warnsHTML = warnings.map(w => `
-        <div class="warn-card">
-          <div class="warn-card-icon">${w.severity === 'high' ? '🔴' : w.severity === 'medium' ? '🟡' : '🔵'}</div>
-          <div class="warn-card-text"><strong>${w.type}:</strong> ${w.desc}</div>
-        </div>`).join('');
-
-  body.innerHTML = `
-      <div class="debug-wrap quiz-slide">
-        <div class="debug-header">
-          <div class="debug-title">🐛 Debug Report <span style="font-size:11px;font-weight:400;color:var(--muted)">(${APP.langPill})</span></div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:20px;background:${bugs.length > 0 ? 'rgba(239,68,68,.12)' : 'rgba(251,191,36,.1)'};border:1px solid ${bugs.length > 0 ? 'rgba(239,68,68,.3)' : 'rgba(251,191,36,.25)'};color:${bugs.length > 0 ? '#f87171' : '#fbbf24'};">${bugs.length} bug${bugs.length !== 1 ? 's' : ''}, ${warnings.length} warning${warnings.length !== 1 ? 's' : ''}</div>
-        </div>
-        ${bugs.length > 0 ? `<div class="debug-section"><div class="debug-sec-title red">🔴 Bugs Found (${bugs.length})</div>${bugsHTML}</div>` : ''}
-        ${fixes.length > 0 ? `<div class="debug-section"><div class="debug-sec-title green">✅ Suggested Fixes</div>${fixesHTML}</div>` : ''}
-        ${warnings.length > 0 ? `<div class="debug-section"><div class="debug-sec-title yellow">⚠️ Warnings & Best Practices (${warnings.length})</div>${warnsHTML}</div>` : ''}
-        <div style="margin-top:14px;padding:10px 14px;background:rgba(124,58,237,.07);border:1px solid rgba(124,58,237,.2);border-radius:10px;font-size:12px;color:var(--muted);line-height:1.7;">
-          <strong style="color:var(--violet2);">ℹ️ Note:</strong> Yeh static analysis hai — runtime errors ke liye terminal mein run karo. PDF mein bhi debug section included hai!
-        </div>
-      </div>`;
+  body.innerHTML =
+    '<div class="debug-wrap quiz-slide">' +
+    '<div class="debug-header"><div class="debug-title">&#x1F41B; Debug Report <span style="font-size:11px;font-weight:400;color:var(--muted)">(' + APP.langPill + ')</span></div>' +
+    '<div style="font-family:monospace;font-size:11px;padding:3px 10px;border-radius:20px;background:' + (bugs.length ? 'rgba(239,68,68,.12)' : 'rgba(251,191,36,.1)') + ';border:1px solid ' + (bugs.length ? 'rgba(239,68,68,.3)' : 'rgba(251,191,36,.25)') + ';color:' + (bugs.length ? '#f87171' : '#fbbf24') + ';">' +
+    bugs.length + ' bug' + (bugs.length !== 1 ? 's' : '') + ', ' + warnings.length + ' warning' + (warnings.length !== 1 ? 's' : '') + '</div></div>' +
+    (bugs.length ? '<div class="debug-section"><div class="debug-sec-title red">&#x1F534; Bugs Found (' + bugs.length + ')</div>' + bugsHTML + '</div>' : '') +
+    (fixes.length ? '<div class="debug-section"><div class="debug-sec-title green">&#x2705; Suggested Fixes</div>' + fixesHTML + '</div>' : '') +
+    (warnings.length ? '<div class="debug-section"><div class="debug-sec-title yellow">&#x26A0;&#xFE0F; Warnings (' + warnings.length + ')</div>' + warnsHTML + '</div>' : '') +
+    '<div style="margin-top:14px;padding:10px 14px;background:rgba(124,58,237,.07);border:1px solid rgba(124,58,237,.2);border-radius:10px;font-size:12px;color:var(--muted);line-height:1.7;">' +
+    '<strong style="color:var(--violet2);">&#x2139;&#xFE0F; Note:</strong> Yeh static analysis hai — runtime errors ke liye terminal mein run karo.</div></div>';
 }
 
-/* ═══════════════════════════════════════════════════════
-   MAIN FLOW — explainCode()
-═══════════════════════════════════════════════════════ */
+/* ============================================================
+   MAIN FLOW — explainCode()  [Timeout + Cache + DOMPurify]
+   ============================================================ */
 async function explainCode() {
-  const code = document.getElementById('codeInput').value.trim();
-  if (!code) { toast('⚠️ Pehle code paste karo!'); return; }
+  const ci = $('codeInput');
+  if (!ci) return;
+  const code = ci.value.trim();
+  if (!code) { toast('Pehle code paste karo!'); return; }
 
-  const btn = document.getElementById('explainBtn');
-  const level = document.getElementById('levelSel').value;
-  const lang = document.getElementById('langSel').value;
+  const btn = $('explainBtn');
+  const level = $('levelSel') ? $('levelSel').value : 'beginner';
+  const lang = $('langSel') ? $('langSel').value : 'Hinglish';
 
-  btn.classList.add('loading');
+  if (btn) btn.classList.add('loading');
   switchTab('expl');
 
-  document.getElementById('outBody').innerHTML = `
-        <div class="placeholder-state">
-          <div style="font-size:36px;animation:spin .8s linear infinite;display:inline-block;">⚡</div>
-          <h3>Amazon Nova 2 Lite soch raha hai...</h3>
-          <p>Structured analysis aa rahi hai...</p>
-        </div>`;
+  $('outBody').innerHTML =
+    '<div class="placeholder-state">' +
+    '<div style="font-size:36px;animation:spin .8s linear infinite;display:inline-block;">&#x26A1;</div>' +
+    '<h3>Amazon Nova 2 Lite soch raha hai...</h3>' +
+    '<p>Structured analysis aa rahi hai...</p></div>';
 
   try {
-    // Using live AWS API Gateway URL instead of local server
-    const response = await fetch('https://xjozftbix8.execute-api.us-east-1.amazonaws.com/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }, body: JSON.stringify({ code, lang, level, analogy: APP.analogy })
-    });
+    /* ── CACHE CHECK ── */
+    const ck = cacheKey(code, lang, level, APP.analogy);
+    let data;
+    if (AI_CACHE[ck]) {
+      data = AI_CACHE[ck];
+      toast('&#x26A1; Cache se load — instant!');
+    } else {
+      /* ── FETCH WITH TIMEOUT ── */
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), API_TIMEOUT);
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({ code, lang, level, analogy: APP.analogy })
+        });
+        clearTimeout(tid);
+        if (!response.ok) throw new Error('API error ' + response.status + ' — backend check karo!');
+        data = await response.json();
+        AI_CACHE[ck] = data;
+      } catch (fetchErr) {
+        clearTimeout(tid);
+        throw fetchErr;
+      }
+    }
 
-    if (!response.ok) throw new Error("API Connection Failed");
-    const data = await response.json();
-
+    /* ── BUILD UI ── */
     const cx = analyzeCode(code);
-    // Assuming we still want to use the buildStructuredExplanation for all the UI sugar
-    // data.explanation returns the raw Bedrock response. For MVP let's embed the bot text.
     const result = buildStructuredExplanation(code, lang, level, APP.analogy, cx);
 
-    // Append real AI explanation into our UI by rendering Markdown into HTML
-    const formattedExplanation = window.marked ? window.marked.parse(data.explanation) : data.explanation.replace(/\\n/g, '<br>');
+    /* Markdown parse — safe fallback */
+    let rawHtml = '';
+    try {
+      rawHtml = (window.marked && typeof window.marked.parse === 'function')
+        ? window.marked.parse(data.explanation || '')
+        : (data.explanation || '').replace(/\n/g, '<br>');
+    } catch (e) {
+      rawHtml = (data.explanation || '').replace(/\n/g, '<br>');
+    }
 
-    result.html = result.html.replace('<div class="expl-section-body"><p style="font-size:14.5px;line-height:2;color:rgba(241,239,255,.92);">',
-      '<div class="expl-section-body"><div class="ai-generated-content"><b>[Amazon Nova AI Response]:</b><br>' + formattedExplanation + '</div><br><br><p style="font-size:14.5px;line-height:2;color:rgba(241,239,255,.92);"><b>[Static Pattern Matcher Analysis]:</b><br>');
+    /* DOMPurify sanitize — safe fallback */
+    const safeHtml = (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function')
+      ? window.DOMPurify.sanitize(rawHtml)
+      : rawHtml;
+
+    result.html = result.html.replace(
+      '<div class="expl-section-body"><p style="font-size:14.5px;line-height:2;color:rgba(241,239,255,.92);">',
+      '<div class="expl-section-body">' +
+      '<div class="ai-generated-content">' +
+      '<b style="color:var(--teal);">[&#x1F916; Amazon Nova AI Response]:</b><br>' + safeHtml +
+      '</div><br><br>' +
+      '<p style="font-size:14.5px;line-height:2;color:rgba(241,239,255,.92);">' +
+      '<b style="color:var(--orange);">[&#x1F4CA; Static Analysis]:</b><br>'
+    );
 
     APP.explanation = result.text;
     APP.explanationHTML = result.html;
@@ -788,112 +992,96 @@ async function explainCode() {
     APP.hasExplained = true;
     resetQuiz(APP.quizData);
 
-    const lc = { beginner: 'lb-b', intermediate: 'lb-i', advanced: 'lb-a' }[level];
-    const ll = { beginner: '🌱 Beginner', intermediate: '⚡ Intermediate', advanced: '🔥 Advanced' }[level];
-    document.getElementById('levelBadge').innerHTML = `<span class="level-badge ${lc}">${ll}</span>`;
+    const lc = { beginner: 'lb-b', intermediate: 'lb-i', advanced: 'lb-a' }[level] || 'lb-b';
+    const ll = { beginner: '&#x1F331; Beginner', intermediate: '&#x26A1; Intermediate', advanced: '&#x1F525; Advanced' }[level] || 'Beginner';
+    const lb = $('levelBadge');
+    if (lb) lb.innerHTML = '<span class="level-badge ' + lc + '">' + ll + '</span>';
 
-    document.getElementById('outBody').innerHTML = APP.explanationHTML;
-    document.getElementById('outActions').style.display = 'flex';
+    $('outBody').innerHTML = APP.explanationHTML;
+    const oa = $('outActions');
+    if (oa) oa.style.display = 'flex';
 
     APP.explCount++;
-    localStorage.setItem('sai_expl_count', APP.explCount.toString());
-    document.getElementById('explCount').textContent = APP.explCount;
+    lsSet('sai_expl_count', APP.explCount.toString());
+    const ce = $('explCount');
+    if (ce) ce.textContent = APP.explCount;
 
-    toast('✅ Analysis ready! Complexity aur Quiz bhi check karo!');
+    /* highlight.js — if available */
+    if (window.hljs) {
+      try { document.querySelectorAll('pre code').forEach(el => window.hljs.highlightElement(el)); } catch (e) { /* ignore */ }
+    }
+
+    toast('&#x2705; Analysis ready! Complexity aur Quiz bhi check karo!');
+
   } catch (err) {
-    document.getElementById('outBody').innerHTML = `
-          <div class="placeholder-state">
-            <div class="icon">❌</div>
-            <h3 style="color:#ff6b35;opacity:1;">Error Aa Gaya!</h3>
-            <p>${escHtml(err.message)}</p>
-          </div>`;
+    const isTimeout = err.name === 'AbortError';
+    $('outBody').innerHTML =
+      '<div class="placeholder-state"><div class="icon">&#x274C;</div>' +
+      '<h3 style="color:#ff6b35;opacity:1;">' + (isTimeout ? '&#x23F1;&#xFE0F; Request Timeout!' : 'Error Aa Gaya!') + '</h3>' +
+      '<p>' + escHtml(isTimeout ? 'Network slow hai — 12 seconds mein response nahi aaya. Dobara try karo!' : err.message) + '</p>' +
+      '<p style="font-size:12px;color:#888;margin-top:8px;">Internet connection check karo aur dobara try karo.</p></div>';
   } finally {
-    btn.classList.remove('loading');
+    if (btn) btn.classList.remove('loading');
   }
 }
 
-/* ═══════════════════════════════════════════════════════
+/* ============================================================
    COMPLEXITY VISUALIZER — renderComplexity()
-═══════════════════════════════════════════════════════ */
+   ============================================================ */
 const BIGO = [
   { lbl: 'O(1)', h: 8, col: '#10B981' },
   { lbl: 'O(log n)', h: 20, col: '#34d399' },
   { lbl: 'O(n)', h: 40, col: '#f97316' },
   { lbl: 'O(n log n)', h: 58, col: '#fb923c' },
-  { lbl: 'O(n²)', h: 80, col: '#ef4444' },
-  { lbl: 'O(2ⁿ)', h: 95, col: '#dc2626' }
+  { lbl: 'O(n2)', h: 80, col: '#ef4444' },
+  { lbl: 'O(2n)', h: 95, col: '#dc2626' }
 ];
 
 function renderComplexity() {
-  const body = document.getElementById('outBody');
+  const body = $('outBody');
+  if (!body) return;
   if (!APP.hasExplained || !APP.complexityData) {
-    body.innerHTML = `<div class="placeholder-state"><div class="icon">📊</div><h3>Complexity ready nahi hai!</h3><p>Pehle code explain karo! 📈</p></div>`;
+    body.innerHTML = '<div class="placeholder-state"><div class="icon">&#x1F4CA;</div><h3>Complexity ready nahi hai!</h3><p>Pehle code explain karo!</p></div>';
     return;
   }
   const d = APP.complexityData;
   const r = APP.lastResult || {};
-  const timeCol = d.tScore < 30 ? 'g' : d.tScore < 60 ? 'y' : 'o';
-  const spcCol = d.sScore < 30 ? 'g' : d.sScore < 60 ? 'y' : 'o';
+  const tc = d.tScore < 30 ? 'g' : d.tScore < 60 ? 'y' : 'o';
+  const sc = d.sScore < 30 ? 'g' : d.sScore < 60 ? 'y' : 'o';
 
   const barsHtml = BIGO.map((b, i) => {
     const hi = i === d.hiIdx;
-    return `<div class="bigo-col ${hi ? 'hi' : ''}">
-          <div class="bigo-fill" style="height:0px;background:${hi ? b.col : 'rgba(255,255,255,0.08)'};${hi ? 'border:1px solid ' + b.col + ';box-shadow:0 0 14px ' + b.col : ''};border-radius:4px 4px 0 0;" data-h="${b.h}"></div>
-          <div class="bigo-lbl">${b.lbl}</div>
-        </div>`;
+    return '<div class="bigo-col ' + (hi ? 'hi' : '') + '">' +
+      '<div class="bigo-fill" style="height:0px;background:' + (hi ? b.col : 'rgba(255,255,255,.08)') + ';' +
+      (hi ? 'border:1px solid ' + b.col + ';box-shadow:0 0 14px ' + b.col : '') +
+      ';border-radius:4px 4px 0 0;" data-h="' + b.h + '"></div>' +
+      '<div class="bigo-lbl">' + b.lbl + '</div></div>';
   }).join('');
 
-  body.innerHTML = `
-      <div class="cx-wrap quiz-slide">
-        <div class="cx-header"><div class="cx-title">📊 Complexity Analysis</div><div class="cx-badge">${d.lines} lines</div></div>
-        <div class="cx-row">
-          <div class="cx-label-row"><div class="cx-name">⏱️ Time Complexity</div><div class="cx-val ${timeCol}">${d.time}</div></div>
-          <div class="bar-track"><div class="bar-fill bf-t" id="bf-time" style="width:0%"></div></div>
-          <div class="cx-desc">${d.time === 'O(1)' ? 'Constant — hamesha same speed. 🏆' : d.time === 'O(n)' ? 'Linear — data ke saath badhta hai. ✅' : d.time === 'O(log n)' ? 'Logarithmic — bahut efficient! 🎯' : 'Quadratic — bade data pe avoid karo. ⚠️'}</div>
-        </div>
-        <div class="cx-row">
-          <div class="cx-label-row"><div class="cx-name">💾 Space Complexity</div><div class="cx-val ${spcCol}">${d.space}</div></div>
-          <div class="bar-track"><div class="bar-fill bf-s" id="bf-spc" style="width:0%"></div></div>
-          <div class="cx-desc">Memory usage — RAM mein kitni jagah chahiye.</div>
-        </div>
-        <div class="cx-row">
-          <div class="cx-label-row"><div class="cx-name">🧩 Overall Score</div><div class="cx-val ${d.cxScore < 40 ? 'g' : d.cxScore < 70 ? 'y' : 'r'}">${d.cxScore}/100</div></div>
-          <div class="bar-track"><div class="bar-fill bf-cx" id="bf-cx" style="width:0%"></div></div>
-          <div class="cx-desc">Lower is better! 0-40 = excellent, 41-70 = ok, 71-100 = optimize karo.</div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 10px;">
-          <div style="flex:1;min-width:120px;padding:10px 14px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:10px;">
-            <div style="font-size:10px;font-weight:800;color:#ef4444;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Worst Case</div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#ef4444;">${d.time}</div>
-          </div>
-          <div style="flex:1;min-width:120px;padding:10px 14px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.2);border-radius:10px;">
-            <div style="font-size:10px;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Average Case</div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#fbbf24;">${d.time}</div>
-          </div>
-          <div style="flex:1;min-width:120px;padding:10px 14px;background:rgba(6,214,160,.07);border:1px solid rgba(6,214,160,.2);border-radius:10px;">
-            <div style="font-size:10px;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Space Used</div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--teal);">${d.space}</div>
-          </div>
-        </div>
-        <div class="bigo-box">
-          <div class="bigo-title">Big-O Comparison — Tumhara code kahan hai?</div>
-          <div class="bigo-bars">${barsHtml}</div>
-        </div>
-        <div class="cx-insight">💡 <strong>SimplifAI Insight:</strong> ${d.insight}</div>
-        <div style="margin-top:18px;">
-          <div style="font-size:12px;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
-            <span style="width:3px;height:14px;background:#fbbf24;border-radius:2px;display:inline-block;"></span>
-            Optimization Suggestions
-          </div>
-          ${r.optsHTML || '<div class="expl-opt-card"><strong style="color:var(--teal);">✅ Code looks clean!</strong><br>Run Explanation first for tips.</div>'}
-        </div>
-      </div>`;
+  body.innerHTML =
+    '<div class="cx-wrap quiz-slide">' +
+    '<div class="cx-header"><div class="cx-title">&#x1F4CA; Complexity Analysis</div><div class="cx-badge">' + d.lines + ' lines</div></div>' +
+    '<div class="cx-row"><div class="cx-label-row"><div class="cx-name">&#x23F1;&#xFE0F; Time Complexity</div><div class="cx-val ' + tc + '">' + d.time + '</div></div>' +
+    '<div class="bar-track"><div class="bar-fill bf-t" id="bf-time" style="width:0%"></div></div>' +
+    '<div class="cx-desc">' + (d.time === 'O(1)' ? 'Constant — hamesha same speed. &#x1F3C6;' : d.time === 'O(n)' ? 'Linear — data ke saath badhta hai. &#x2705;' : d.time === 'O(log n)' ? 'Logarithmic — bahut efficient! &#x1F3AF;' : 'Quadratic — bade data pe avoid karo. &#x26A0;&#xFE0F;') + '</div></div>' +
+    '<div class="cx-row"><div class="cx-label-row"><div class="cx-name">&#x1F4BE; Space Complexity</div><div class="cx-val ' + sc + '">' + d.space + '</div></div>' +
+    '<div class="bar-track"><div class="bar-fill bf-s" id="bf-spc" style="width:0%"></div></div>' +
+    '<div class="cx-desc">Memory usage — RAM mein kitni jagah chahiye.</div></div>' +
+    '<div class="cx-row"><div class="cx-label-row"><div class="cx-name">&#x1F9E9; Overall Score</div><div class="cx-val ' + (d.cxScore < 40 ? 'g' : d.cxScore < 70 ? 'y' : 'r') + '">' + d.cxScore + '/100</div></div>' +
+    '<div class="bar-track"><div class="bar-fill bf-cx" id="bf-cx" style="width:0%"></div></div>' +
+    '<div class="cx-desc">Lower is better! 0-40 = excellent, 41-70 = ok, 71-100 = optimize karo.</div></div>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 10px;">' +
+    '<div style="flex:1;min-width:100px;padding:10px 14px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:10px;"><div style="font-size:10px;font-weight:800;color:#ef4444;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Worst Case</div><div style="font-family:monospace;font-size:15px;font-weight:700;color:#ef4444;">' + d.time + '</div></div>' +
+    '<div style="flex:1;min-width:100px;padding:10px 14px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.2);border-radius:10px;"><div style="font-size:10px;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Average Case</div><div style="font-family:monospace;font-size:15px;font-weight:700;color:#fbbf24;">' + d.time + '</div></div>' +
+    '<div style="flex:1;min-width:100px;padding:10px 14px;background:rgba(6,214,160,.07);border:1px solid rgba(6,214,160,.2);border-radius:10px;"><div style="font-size:10px;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Space Used</div><div style="font-family:monospace;font-size:15px;font-weight:700;color:var(--teal);">' + d.space + '</div></div></div>' +
+    '<div class="bigo-box"><div class="bigo-title">Big-O Comparison — Tumhara code kahan hai?</div><div class="bigo-bars">' + barsHtml + '</div></div>' +
+    '<div class="cx-insight">&#x1F4A1; <strong>SimplifAI Insight:</strong> ' + d.insight + '</div>' +
+    '<div style="margin-top:18px;"><div style="font-size:12px;font-weight:800;color:#fbbf24;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span style="width:3px;height:14px;background:#fbbf24;border-radius:2px;display:inline-block;"></span>Optimization Suggestions</div>' +
+    (r.optsHTML || '<div class="expl-opt-card"><strong style="color:var(--teal);">&#x2705; Code looks clean!</strong><br>Run Explanation first for tips.</div>') + '</div></div>';
 
   requestAnimationFrame(() => {
     setTimeout(() => {
-      const t = document.getElementById('bf-time');
-      const s = document.getElementById('bf-spc');
-      const c = document.getElementById('bf-cx');
+      const t = $('bf-time'), s = $('bf-spc'), c = $('bf-cx');
       if (t) t.style.width = d.tScore + '%';
       if (s) s.style.width = d.sScore + '%';
       if (c) c.style.width = d.cxScore + '%';
@@ -905,33 +1093,42 @@ function renderComplexity() {
   });
 }
 
-/* ═══════════════════════════════════════════════════════
+/* ============================================================
    UTILITIES
-═══════════════════════════════════════════════════════ */
+   ============================================================ */
 function escHtml(s) {
   if (!s) return '';
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function doCopy() {
-  if (!APP.explanation) { toast('⚠️ Pehle explain karo!'); return; }
-  navigator.clipboard.writeText(APP.explanation).then(() => toast('📋 Copied!'));
+  if (!APP.explanation) { toast('Pehle explain karo!'); return; }
+  navigator.clipboard.writeText(APP.explanation)
+    .then(() => toast('&#x1F4CB; Copied!'))
+    .catch(() => toast('Copy failed — manually select karo.'));
 }
 
 function toast(msg) {
-  const t = document.getElementById('toastEl');
-  t.textContent = msg; t.classList.add('show');
+  const t = $('toastEl');
+  if (!t) return;
+  t.innerHTML = msg;
+  t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-/* FAQ accordion */
+/* ──────────── FAQ ACCORDION ──────────── */
 document.querySelectorAll('.faq-item').forEach(item => {
   const q = item.querySelector('.faq-q');
   if (q) q.addEventListener('click', () => {
-    const isOpen = item.classList.contains('open');
+    const open = item.classList.contains('open');
     document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
-    if (!isOpen) item.classList.add('open');
+    if (!open) item.classList.add('open');
   });
 });
 
+/* ──────────── DEBOUNCED INPUT LISTENER ──────────── */
+const codeInputEl = $('codeInput');
+if (codeInputEl) codeInputEl.addEventListener('input', debouncedMeter);
+
+/* ──────────── INIT ──────────── */
 updateMeter();
