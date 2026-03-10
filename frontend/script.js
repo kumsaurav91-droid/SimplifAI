@@ -66,6 +66,9 @@ const APP = {
 const explCountEl = $('explCount');
 if (explCountEl) explCountEl.textContent = APP.explCount;
 
+/* ──────────── 7.5. THEME ICON INITIALIZATION (REMOVED) ──────────── */
+// Theme functionality removed as per user request to stick with Glass Dark Theme
+
 /* ──────────── 8. SAMPLES ──────────── */
 const SAMPLES = {
   loop: 'for i in range(5):\n    print(i)',
@@ -78,6 +81,7 @@ function loadSample(k) {
   const ci = $('codeInput');
   if (ci) ci.value = SAMPLES[k] || '';
   updateMeter();
+  if (typeof updateLineNumbers === 'function') updateLineNumbers();
   toast('Sample load ho gaya!');
 }
 

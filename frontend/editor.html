@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimplifAI — IDE Editor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="ide-theme">
+  
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+
+  <div class="ide-layout">
+    <!-- SIDEBAR -->
+    <aside class="ide-sidebar">
+      <a href="index.html" class="ide-logo" title="Back to Home" style="text-decoration:none;">⚡</a>
+      
+      <div class="ide-lang-pills">
+         <div class="lang-pill active" onclick="selLang(this,'Python')" title="Python (🐍)">🐍</div>
+         <div class="lang-pill" onclick="selLang(this,'JavaScript')" title="JavaScript (🟨)">🟨</div>
+         <div class="lang-pill" onclick="selLang(this,'Java')" title="Java (☕)">☕</div>
+         <div class="lang-pill" onclick="selLang(this,'C++')" title="C++ (⚙️)">⚙️</div>
+         <div class="lang-pill" onclick="selLang(this,'SQL')" title="SQL (🗄️)">🗄️</div>
+         <div class="lang-pill" onclick="selLang(this,'Auto Detect')" title="Auto (🔍)">🔍</div>
+      </div>
+    </aside>
+
+    <!-- MAIN AREA -->
+    <main class="ide-main">
+       <!-- HEADER -->
+       <header class="ide-header">
+           <div class="ide-filename" style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; gap: 6px; margin-right: 12px;">
+              <div class="panel-dot dot-r"></div>
+              <div class="panel-dot dot-y"></div>
+              <div class="panel-dot dot-g"></div>
+            </div>
+            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--text);">SimplifAI Terminal</span>
+           </div>
+           
+           <div class="ide-actions">
+             
+             <div class="analogy-row" style="padding:0; border:none; background:transparent; gap: 4px; margin-right: 10px;">
+                 <button class="analogy-btn active" onclick="selAnalogy(this,'cricket')" title="Cricket" style="padding: 4px 10px">🏏</button>
+                 <button class="analogy-btn" onclick="selAnalogy(this,'bollywood')" title="Bollywood" style="padding: 4px 10px">🎬</button>
+                 <button class="analogy-btn" onclick="selAnalogy(this,'food')" title="Khana" style="padding: 4px 10px">🍛</button>
+                 <button class="analogy-btn" onclick="selAnalogy(this,'none')" title="None" style="padding: 4px 10px">✏️</button>
+             </div>
+             
+              <div class="select-wrap ide-select-wrap" style="width: 100px; min-width:unset;">
+                <select id="levelSel" class="ide-select">
+                  <option value="beginner">🌱 Beginner</option>
+                  <option value="intermediate" selected>⚡ Intermediate</option>
+                  <option value="advanced">🔥 Advanced</option>
+                </select>
+              </div>
+              
+              <div class="select-wrap ide-select-wrap" style="width: 100px; min-width:unset;">
+                <select id="langSel" class="ide-select">
+                  <option value="Hinglish" selected>🇮🇳 Hinglish</option>
+                  <option value="English">English</option>
+                </select>
+              </div>
+              
+
+              <button class="explain-btn" id="explainBtn" onclick="explainCode()" style="padding: 8px 16px;">
+                <div class="spinner"></div>
+                <span class="btn-icon" style="font-size: 12px;">⚡</span>
+                Explain
+              </button>
+              <button class="explain-btn run-btn" id="runBtn" onclick="runCode()" style="padding: 8px 16px;">
+                <span class="btn-icon" style="font-size: 12px;">▶</span>
+                Run
+              </button>
+           </div>
+       </header>
+
+       <!-- SPLIT CONTENT -->
+       <div class="ide-split-container">
+           
+           <!-- EDITOR (LEFT) -->
+           <div class="ide-editor-pane">
+              <div class="ide-editor-wrapper" style="display:flex; flex:1; overflow:hidden;">
+                  <div class="ide-line-numbers" id="lineNumbers">1</div>
+                  <textarea class="code-area ide-textarea" id="codeInput" spellcheck="false" placeholder="// Terminal Editor: Type or paste your code here..." oninput="updateMeter(); updateLineNumbers()"></textarea>
+              </div>
+              
+              <div class="complexity-bar ide-meter-bar">
+                 <span class="complexity-label">Complexity</span>
+                 <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+                 <span class="complexity-val" id="meterVal">—</span>
+              </div>
+           </div>
+
+           <!-- OUTPUT (RIGHT) -->
+           <div class="ide-output-pane">
+              <div class="out-tabs ide-tabs" style="justify-content:flex-start; margin-bottom:0; background: var(--surface2); padding: 0 10px; min-height:43px;">
+                <button class="out-tab active" id="tab-expl" onclick="switchTab('expl')">💬 Explain</button>
+                <button class="out-tab tab-debug" id="tab-debug" onclick="switchTab('debug')">🐛 Debug</button>
+                <button class="out-tab" id="tab-cx" onclick="switchTab('cx')">📊 Complexity</button>
+                <button class="out-tab" id="tab-quiz" onclick="switchTab('quiz')">🧩 Quiz</button>
+                <button class="out-tab" id="tab-run" onclick="switchTab('run')">▶ Output</button>
+                <!-- Badge holder -->
+                <div id="levelBadge" style="margin-left: auto;"></div>
+              </div>
+
+              <div class="out-body ide-outbody" id="outBody" style="border:none; border-radius:0;">
+                 <!-- empty placeholder -->
+                 <div class="placeholder-state" style="margin-top: 20%;">
+                   <div class="icon" style="font-size:40px;">🤖</div>
+                   <h3 style="margin-top: 15px;">Output Panel</h3>
+                   <p>Run or explain your code to see results here.</p>
+                 </div>
+              </div>
+
+              <div class="output-actions ide-outactions" id="outActions" style="display:none; padding:12px; border-top: 1px solid var(--border); background: var(--surface);">
+                 <button class="action-btn btn-pdf" onclick="doDownloadPDF()">
+                   <svg class="btn-icon-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+                     <path d="M9 1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" />
+                     <path d="M9 1v5h5" />
+                     <path d="M5 9h6M5 12h4" />
+                   </svg>
+                   PDF Report
+                 </button>
+                 <button class="action-btn btn-debug" id="debugBtn" onclick="debugCode()">
+                   <svg class="btn-icon-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+                     <path d="M6 2a2 2 0 0 0-2 2v1H2M10 2a2 2 0 0 1 2 2v1h2M4 8H2M14 8h-2M4 12H2M14 12h-2M6 14a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H6z" />
+                   </svg>
+                   Debug
+                 </button>
+              </div>
+           </div>
+       </div>
+    </main>
+  </div>
+  
+  <!-- UI STATS HIDDEN DIVS FOR JS COMPATIBILITY -->
+  <div style="display:none;" id="explCount">0</div>
+  
+  <div class="toast" id="toastEl"></div>
+  
+  <script>
+    function updateLineNumbers() {
+       const ci = document.getElementById('codeInput');
+       const ln = document.getElementById('lineNumbers');
+       if(!ci || !ln) return;
+       const lines = ci.value.split('\n').length;
+       const numbers = Array(lines).fill(0).map((_,i) => i+1).join('\n');
+       ln.textContent = numbers;
+    }
+    document.addEventListener('DOMContentLoaded', updateLineNumbers);
+    document.getElementById('codeInput')?.addEventListener('scroll', function() {
+       const ln = document.getElementById('lineNumbers');
+       if(ln) ln.scrollTop = this.scrollTop;
+    });
+  </script>
+  <script src="script.js"></script>
+  <script src="pdf.js"></script>
+</body>
+</html>
